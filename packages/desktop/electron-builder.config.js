@@ -579,6 +579,12 @@ export default {
   },
   extraResources: [
     { from: resolve(workspaceRoot, noticesFileName), to: noticesFileName },
+    {
+      // 手机远控静态页（packages/web 构建产物，run-production-build 并行产出）。
+      // 主进程 phoneRemote 服务器按 process.resourcesPath/web-dist 解析并静态托管。
+      from: resolve(workspaceRoot, "packages/web/dist"),
+      to: "web-dist",
+    },
     ...(targetPlatform.os === "darwin"
       ? [
           {
