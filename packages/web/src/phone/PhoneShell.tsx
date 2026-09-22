@@ -414,23 +414,20 @@ function PhoneTaskHome(props: {
               </p>
             ) : null}
             {expanded && tasks.length > 0 ? (
-              <ul className="px-1.5 pb-2">
+              <ul className="pb-2 pt-1">
                 {tasks.map((task) => (
-                  <li key={task.taskId}>
+                  <li key={task.taskId} className="relative">
+                    {task.unreadAt ? (
+                      <span className="absolute left-5 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-[#4f8ef7]" />
+                    ) : null}
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left hover:bg-surface-hover"
+                      className="flex items-center gap-3 rounded-xl px-2.5 py-3 text-left hover:bg-surface-hover"
+                      style={{ marginLeft: 68, width: "calc(100% - 68px)" }}
                       onClick={() => props.onOpenTask(task)}
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          {task.unreadAt ? (
-                            <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
-                          ) : null}
-                          <span className="min-w-0 flex-1 truncate text-ui-base">
-                            {task.title}
-                          </span>
-                        </span>
+                        <span className="block truncate text-ui-base">{task.title}</span>
                         <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
                           {formatRelativeTime(task.updatedAt)}
                         </span>
