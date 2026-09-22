@@ -13,7 +13,7 @@
  * rebase 约束：本目录不 import 官方组件内部实现；仅消费 @zcode/ui 主入口
  * 增量导出的既有模块与 @zcode/shared 协议常量。
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Check, ChevronRight, Cloud, Folder, Plus, Zap } from "lucide-react";
 import {
   useGlobalTaskList,
@@ -196,7 +196,13 @@ type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
 declare global {
   interface Window {
     __zcodeTabStoreE2E?: {
+      subscribe(listener: () => void): () => void;
       getState(): {
+        tabs: Array<{
+          kind: string;
+          workspacePath: string;
+          workspaceIdentity?: string;
+        }>;
         activateTabByPath(
           workspacePath: string,
           options?: { workspaceIdentity?: string },
@@ -204,6 +210,27 @@ declare global {
       };
     };
   }
+}
+
+const EMPTY_STORE_TABS: Array<{
+  kind: string;
+  workspacePath: string;
+  workspaceIdentity?: string;
+}> = [];
+const subscribeNoop = () => () => {};
+
+/**
+ * 读取官方 TabStoreProvider 挂载的真实 tab store。桥在官方子树 effect 里挂载，
+ * PhoneShell 作为后挂载的兄弟树，effect 阶段补读一次即可拿到。
+ */
+function useE2ETabStoreBridge(): NonNullable<Window["__zcodeTabStoreE2E"]> | null {
+  const [store, setStore] = useState(() => window.__zcodeTabStoreE2E ?? null);
+  useEffect(() => {
+    if (!store) {
+      setStore(window.__zcodeTabStoreE2E ?? null);
+    }
+  }, [store]);
+  return store;
 }
 
 /**
@@ -259,7 +286,33 @@ function PhoneTaskHome(props: {
   onOpenTask: (task: TaskListItem) => void;
   onOpenDraft: (fact: WorkspaceFactLite) => void;
 }) {
-  const workspaces = useControllerWorkspaces();
+  const projected = useControllerWorkspaces();
+  const e2eStore = useE2ETabStoreBridge();
+  const storeTabs = useSyncExternalStore(
+    e2eStore ? e2eStore.subscribe : subscribeNoop,
+    e2eStore ? () => e2eStore.getState().tabs : () => EMPTY_STORE_TABS,
+    () => EMPTY_STORE_TABS,
+  );
+  // 投影只含 host 已注册 source 的工作区；WSL/远程项目在未连接时 host 端
+  // resolveSource 返回 null、永不注册。真实窗口 tab store 里有它们——按离线
+  // 形态合并进首页，口径与桌面侧栏一致；连上后投影快照自动接管（key 去重）。
+  const workspaces = useMemo(() => {
+    const byKey = new Map(projected.map((fact) => [workspaceKeyOf(fact), fact]));
+    for (const tab of storeTabs) {
+      if (tab.kind !== "workspace") {
+        continue;
+      }
+      const key = tab.workspaceIdentity?.trim() || tab.workspacePath;
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          workspacePath: tab.workspacePath,
+          ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
+          sourceAvailability: "offline" as const,
+        });
+      }
+    }
+    return Array.from(byKey.values());
+  }, [projected, storeTabs]);
   const workspaceTabs = useMemo(
     () =>
       workspaces.map((fact) => ({
@@ -475,6 +528,10 @@ export function PhoneShell() {
     style.textContent = [
       "html.zcode-phone.zcode-chat #sidebar{display:none}",
       "html.zcode-phone.zcode-chat [data-testid='resizable-handle']{display:none}",
+      // iOS Safari 会在聚焦字号 <16px 的可编辑控件时自动放大页面（官方手机壳靠
+      // 输入框 ≥16px 规避，viewport meta 与桌面构建相同）。聊天输入是 Lexical
+      // ContentEditable，不是 textarea——必须一并覆盖。
+      "html.zcode-phone input,html.zcode-phone textarea,html.zcode-phone select,html.zcode-phone [contenteditable]{font-size:max(16px,1em)!important}",
     ].join("");
     document.head.appendChild(style);
     return () => {
