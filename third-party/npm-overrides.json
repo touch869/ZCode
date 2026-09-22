@@ -447,65 +447,228 @@
     "evidence": "The package does not declare a license field; its license contains the MIT grant and copyright notice."
   },
   {
-    "package": "@rrweb/types@2.1.6",
-    "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
-    "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "package": "@trycua/cua-driver@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "@rrweb/utils@2.1.6",
-    "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
-    "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "package": "@trycua/cua-driver-darwin-arm64@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "rrdom@2.1.6",
-    "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
-    "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "package": "@trycua/cua-driver-darwin-x64@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "rrweb-snapshot@2.1.6",
-    "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
-    "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "package": "@trycua/cua-driver-linux-arm64-gnu@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "rrweb@2.1.6",
-    "file": "third-party/upstream/e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c.txt",
-    "sha256": "e49e62397b603438476e0d6b5ca3b6e6d4f23a80594e596aff29ac04fa3e1b1c",
-    "source": "https://raw.githubusercontent.com/rrweb-io/rrweb/rrweb%402.1.6/LICENSE"
+    "package": "@trycua/cua-driver-linux-x64-gnu@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "keyv@4.5.4",
-    "file": "third-party/upstream/6f7e6eae2a2afbaa67b266650f7342e7bf8e82cb57f6ab98148b3d6e0fb4450a.txt",
-    "sha256": "6f7e6eae2a2afbaa67b266650f7342e7bf8e82cb57f6ab98148b3d6e0fb4450a",
-    "source": "https://registry.npmjs.org/keyv/4.5.4",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT"
+    "package": "@trycua/cua-driver-win32-arm64-msvc@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "@arms/rum-browser@0.1.8",
-    "file": "third-party/upstream/2c976d327b293bd74c257cd53e9b4ecef97a06b1651baa3b24327c97192cb3de.txt",
-    "sha256": "2c976d327b293bd74c257cd53e9b4ecef97a06b1651baa3b24327c97192cb3de",
-    "source": "https://registry.npmjs.org/%40arms%2frum-browser%400.1.8",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "ISC"
+    "package": "@trycua/cua-driver-win32-x64-msvc@0.28.2",
+    "repo": "trycua/cua",
+    "refs": ["cua-driver-rs-v0.28.2"],
+    "file": "third-party/upstream/c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9.txt",
+    "sha256": "c0779290c1d4783169aa3dbfb55feb505e563ef8a004bbf55298ceffcfbda8d9",
+    "source": "https://raw.githubusercontent.com/trycua/cua/cua-driver-rs-v0.28.2/LICENSE.md",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MIT",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive carries no standalone LICENSE; the publisher declares MIT and the pinned upstream LICENSE.md is preserved as the copyright and permission notice.",
+      "upstreamLicenseFiles": ["LICENSE.md"]
+    }
   },
   {
-    "package": "@arms/rum-core@0.1.4",
-    "file": "third-party/upstream/328eb7864c20ab77607b26ee1913b65a9b880f6300eea9e667b890da896a2f40.txt",
-    "sha256": "328eb7864c20ab77607b26ee1913b65a9b880f6300eea9e667b890da896a2f40",
-    "source": "https://registry.npmjs.org/%40arms%2frum-core%400.1.4",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "ISC"
+    "package": "@ubjs/core@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
   },
   {
-    "package": "@arms/rum-electron@0.0.3",
-    "file": "third-party/upstream/38b6f63a0aa422b5c329e75f1aeecd2b02e83caab1747644c00810870d77bacb.txt",
-    "sha256": "38b6f63a0aa422b5c329e75f1aeecd2b02e83caab1747644c00810870d77bacb",
-    "source": "https://registry.npmjs.org/%40arms%2frum-electron%400.0.3",
-    "evidenceKind": "publisher-license-identifier-and-standard-terms",
-    "license": "MIT"
+    "package": "@ubjs/node@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-darwin-arm64@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-darwin-x64@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-linux-arm64-gnu@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-linux-x64-gnu@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-win32-arm64-msvc@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
+  },
+  {
+    "package": "@ubjs/node-win32-x64-msvc@0.31.0-3",
+    "repo": "jhugman/uniffi-bindgen-react-native",
+    "refs": ["0.31.0-3"],
+    "file": "third-party/upstream/d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d.txt",
+    "sha256": "d1cc4c0ada218e8a336dc8c3d8bb7d5b1c8dedfa31f5b25c9ea1759d21b8b62d",
+    "source": "https://raw.githubusercontent.com/jhugman/uniffi-bindgen-react-native/0.31.0-3/LICENSE",
+    "evidenceKind": "pinned-upstream-license-file",
+    "license": "MPL-2.0",
+    "reviewEvidence": {
+      "checkedOn": "2026-09-21",
+      "result": "The versioned npm archive contains no standalone complete LICENSE; the publisher's declared license identifier and the pinned upstream license file are preserved instead. The dependency is redistributed unmodified, so the MPL-2.0 source-availability obligation is met by the upstream release the pinned version was built from.",
+      "upstreamLicenseFiles": ["LICENSE"]
+    }
   }
 ]
