@@ -256,7 +256,12 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
   let webDistDir: string | null = null;
   let panelWindow: BrowserWindow | null = null;
   const activeConnections = new Set<{ connectedAt: number }>();
-  const wss = new WebSocketServer({ noServer: true });
+  // permessage-deflate：WS 上的 RPC 载荷（任务列表/快照等 JSON 密集帧）在慢速
+  // 中继链路上是主要瓶颈，逐帧压缩通常可缩 5-10 倍，浏览器端原生协商无需改动。
+  const wss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: { threshold: 1024 },
+  });
   // dist 内哈希资产不可变：gzip 结果按路径缓存，避免每个手机连接重复压缩。
   const gzipCache = new Map<string, Buffer>();
 
@@ -330,8 +335,28 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
     }
 
     port1.start();
-    const entry = { connectedAt: Date.now(), isAlive: true };
+    const entry = {
+      connectedAt: Date.now(),
+      isAlive: true,
+      // 诊断计数：区分"链路慢"与"流量停滞"（卡loading时看 up/down 是否还在涨）。
+      downBytes: 0,
+      downFrames: 0,
+      upBytes: 0,
+      upFrames: 0,
+    };
     activeConnections.add(entry);
+    const statsTimer = setInterval(() => {
+      if (closed) {
+        return;
+      }
+      logger.info("[phone-remote] ws stats", {
+        seconds: Math.round((Date.now() - entry.connectedAt) / 1000),
+        downMB: +(entry.downBytes / 1048576).toFixed(2),
+        downFrames: entry.downFrames,
+        upMB: +(entry.upBytes / 1048576).toFixed(2),
+        upFrames: entry.upFrames,
+      });
+    }, 30_000);
     // 心跳：DERP 中继/NAT 会在静默期回收映射，iOS 后台挂起也只会留下半开连接。
     // 25s ping + 两轮无 pong 即 terminate，让手机端尽快收到 close 并触发重连。
     const pingTimer = setInterval(() => {
@@ -361,6 +386,7 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
       }
       closed = true;
       clearInterval(pingTimer);
+      clearInterval(statsTimer);
       activeConnections.delete(entry);
       protocol.dispose();
       try {
@@ -375,6 +401,8 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
       if (closed) {
         return;
       }
+      entry.upBytes += body.byteLength;
+      entry.upFrames += 1;
       try {
         // SocketProtocol 帧体 ⇄ MessagePort Uint8Array：两侧语义一致（RPC body），
         // 桥只做载荷直通，不解析 Channel 语义。
@@ -393,6 +421,8 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
         // 缺失 SAT/DRN 只影响 CLI pause 优化，不影响正确性。
         return;
       }
+      entry.downBytes += data.byteLength;
+      entry.downFrames += 1;
       try {
         protocol.send(VSBuffer.wrap(data));
       } catch {
