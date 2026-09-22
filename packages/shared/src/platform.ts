@@ -593,6 +593,7 @@ export const DesktopCommandIds = {
   ClearAllData: "clearAllData",
   ClearCodingPlanWebviewStorage: "clearCodingPlanWebviewStorage",
   GetCuaOsSupport: "getCuaOsSupport",
+  OpenPhoneRemotePanel: "openPhoneRemotePanel",
 } as const;
 
 export type DesktopCommandId = (typeof DesktopCommandIds)[keyof typeof DesktopCommandIds];

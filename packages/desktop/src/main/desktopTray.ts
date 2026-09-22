@@ -24,6 +24,9 @@ export function createWindowsDesktopTray(options: {
   executeDesktopCommand: (command: DesktopCommandId) => Promise<unknown>;
   quitApp: () => void;
   logger: { warn: (...args: unknown[]) => void };
+  /** 打开手机远控面板；未注入时不显示托盘菜单项。主菜单栏在 Windows 上
+   * autoHideMenuBar（Alt/F10 唤出），托盘右键是更可靠的面板入口。 */
+  openPhoneRemotePanel?: () => void;
 }) {
   if (process.platform !== "win32") {
     return null;
@@ -71,6 +74,14 @@ export function createWindowsDesktopTray(options: {
           label: getLabel(desktopMenuMessageIds.fileOpenWorkspace),
           click: () => executeTrayCommand(DesktopCommandIds.OpenWorkspace),
         },
+        ...(options.openPhoneRemotePanel
+          ? [
+              {
+                label: getLabel(desktopMenuMessageIds.filePhoneRemote),
+                click: () => options.openPhoneRemotePanel?.(),
+              },
+            ]
+          : []),
         { type: "separator" },
         // 更新入口跟随产品身份：Preview（含生产后端的 Preview）禁用更新器，托盘也不能露出入口。
         ...(ZCODE_PRODUCT_FLAVOR === "production"
