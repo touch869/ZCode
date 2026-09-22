@@ -70,7 +70,6 @@ import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable.j
 import { toast } from "@/components/ui/toast.js";
 import { getGitDirtyFileCount } from "@/git-branch-switcher/display.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { ChevronLeft } from "lucide-react";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
 import { getPathLeaf, toFileUrl } from "@/lib/path.js";
 import { shouldOpenAssistantHtmlInBrowser } from "@/lib/assistantPreviewCards.js";
@@ -95,7 +94,6 @@ import {
 import type { WorkspaceShellLayoutProps } from "@/app-shell/types.js";
 import { useTabStoreApi } from "@/store/TabStoreProvider.js";
 import { useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
-import { useMobileLayoutViewport } from "@/hooks/useMobileLayoutViewport.js";
 import type { ComposerMentionPrefill } from "@/store/zcodeSessionStoreTypes.js";
 
 const WORKSPACE_SIDEBAR_DEFAULT_WIDTH_PX = 264;
@@ -336,10 +334,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
   taskFindDialogProps,
 }: WorkspaceShellLayoutProps) {
   const { intl } = useZCodeIntl();
-  const setActiveTaskId = useZCodeSessionStore((s) => s.setActiveTaskId);
-  const handleMobileBackToTaskList = useCallback(() => {
-    setActiveTaskId(workspaceAbsPath, null, workspaceIdentity);
-  }, [setActiveTaskId, workspaceAbsPath, workspaceIdentity]);
   const isOfficeMode = useIsOfficeMode();
   const baseServices = useBaseWorkspaceServices();
   const tabStoreApi = useTabStoreApi();
@@ -408,16 +402,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
       (entry) => Boolean(entry.workspaceKey) && !retained.has(entry.workspaceKey),
     );
   }, [openWorkspaceKeys]);
-  // 手机/Web 窄视口两页式导航（对齐官方手机端形态）：无 active task = 列表页
-  // （侧栏全宽、主区隐藏）；有 active task = 聊天页（侧栏隐藏、主区全宽 + 顶部返回条）。
-  // isDesktop 明确排除：桌面窗口即使缩窄也保持原布局，不影响既有桌面行为。
-  const isMobileTwoPageMode = useMobileLayoutViewport() && !isDesktop;
-  const isMobileListPage =
-    isMobileTwoPageMode &&
-    activeTaskId === null &&
-    workspaceMainView !== "automations" &&
-    workspaceMainView !== "plugin-store";
-  const isSidebarPanelVisible = isMobileTwoPageMode ? isMobileListPage : isSidebarVisible;
+  const isSidebarPanelVisible = isSidebarVisible;
   const {
     panelRef: terminalPanelRef,
     panelElementRef: terminalPanelElementRef,
@@ -1510,9 +1495,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
     workspaceMainView !== "automations" && workspaceMainView !== "plugin-store";
   const shouldRenderWorkspaceHeader =
     shouldRenderMainViewHeader && (activeTaskId !== null || isDesktop);
-  // 聊天页返回条：仅手机两页模式下有 active task 时渲染（isSidebarPanelVisible 的
-  // 移动端覆盖已在上方定义，这里只负责聊天页自己的返回入口）。
-  const isMobileChatPage = isMobileTwoPageMode && activeTaskId !== null && shouldRenderMainViewHeader;
   // ErrorBoundary resetKeys 的数组如果每次 render 都重新创建，
   // 即使 workspace/task 没变化也会在 React DevTools Components 轨道里持续表现为子树 props 变化。
   const workspaceOnlyResetKeys = useMemo(() => [workspaceKey], [workspaceKey]);
@@ -1551,17 +1533,10 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           data-workspace-sidebar-panel="true"
           id="sidebar"
           className={cn(
-            "flex-none overflow-hidden",
-            isMobileTwoPageMode
-              ? isMobileListPage
-                ? "w-full max-w-full opacity-100"
-                // 两页模式下聊天页彻底移除侧栏占位（不用 opacity 隐藏，避免 tab 焦点残留）。
-                : "hidden"
-              : "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] duration-200 ease-out transition-[width,opacity] data-[workspace-sidebar-resizing=true]:transition-opacity",
+            "w-[var(--workspace-sidebar-panel-width)] max-w-[50%] flex-none overflow-hidden duration-200 ease-out transition-[width,opacity] data-[workspace-sidebar-resizing=true]:transition-opacity",
             // 拖动侧栏宽度时如果继续过渡 width，会让指针移动和实际宽度之间产生滞后。
             // 拖拽 active 通过 DOM 标记切 transition，避免 pointerdown/up 为了切 class 重渲染整棵 workspace。
-            !isMobileTwoPageMode &&
-              (isSidebarPanelVisible ? "opacity-100" : "pointer-events-none opacity-0"),
+            isSidebarPanelVisible ? "opacity-100" : "pointer-events-none opacity-0",
           )}
         >
           <aside
@@ -1633,7 +1608,7 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           </aside>
         </div>
 
-        {isSidebarVisible && !isMobileTwoPageMode ? (
+        {isSidebarVisible ? (
           <div
             role="separator"
             tabIndex={0}
@@ -1663,8 +1638,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
           className={cn(
             "flex min-w-[320px] flex-1 flex-col",
             hasDesktopPanelInset ? "p-1 pl-0 pt-0" : "p-0",
-            // 两页模式下列表页由侧栏独占，主区整体隐藏。
-            isMobileListPage && "hidden",
           )}
         >
           {
@@ -1711,19 +1684,6 @@ export const WorkspaceShellLayout = memo(function WorkspaceShellLayoutComponent(
                       isTerminalVisible && "rounded-b-[var(--workspace-panel-radius)] border-b",
                     )}
                   >
-                    {isMobileChatPage ? (
-                      // 手机两页模式的聊天页返回条：清空 activeTask 回到列表页。
-                      // 与桌面无关（isMobileChatPage 已含 !isDesktop），不进 WorkspaceHeader。
-                      <button
-                        type="button"
-                        data-testid="mobile-back-to-task-list"
-                        className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-background px-3 text-ui-sm text-foreground-subtle select-none hover:bg-surface-hover"
-                        onClick={handleMobileBackToTaskList}
-                      >
-                        <ChevronLeft className="size-4" />
-                        {intl.formatMessage({ id: "mobileNav.backToList" })}
-                      </button>
-                    ) : null}
                     {shouldRenderWorkspaceHeader ? (
                       <ScopedErrorBoundary
                         scope="workspace-header"

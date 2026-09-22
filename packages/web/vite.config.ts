@@ -19,6 +19,37 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 const { version } = JSON.parse(readFileSync(resolve(REPO_ROOT, "package.json"), "utf-8"));
 
+/**
+ * 手机远控：点亮官方组件里既有的 isMobileViewport 分支。
+ *
+ * 官方 SessionPane/ConversationComposer 内部存在 `isMobileViewport: false`
+ * 字面量（上游以字面量收口桌面行为），手机壳需要真实视口判定。本插件仅在
+ * packages/web 构建（手机/web 端产物）中把字面量替换为运行时判定
+ * `globalThis.__zcodePhoneViewport?.() ?? false`（由 src/phone/PhoneShell.tsx
+ * 注入）；desktop 构建不经过本插件，官方源码零改动。rebase 后若上游改写该
+ * 字面量，替换自动失配为 no-op，行为安全回退桌面形态。
+ */
+function phoneMobileViewportBranchesPlugin() {
+  return {
+    name: "phone-remote-enable-mobile-viewport-branches",
+    transform(code: string, id: string) {
+      if (!/[\\/]SessionPane\.tsx$|[\\/]ConversationComposer\.tsx$/.test(id)) {
+        return null;
+      }
+      const marker = "isMobileViewport: false";
+      if (!code.includes(marker)) {
+        return null;
+      }
+      return {
+        code: code
+          .split(marker)
+          .join("isMobileViewport: globalThis.__zcodePhoneViewport?.() ?? false"),
+        map: null,
+      };
+    },
+  };
+}
+
 function resolveZCodeEnv(value: string | undefined): "test" | "production" {
   return value?.trim().toLowerCase() === "production" ? "production" : "test";
 }
@@ -39,7 +70,13 @@ export default defineConfig(({ mode }) => {
   const zaiOAuthClientId = resolveZaiOAuthClientId(endpointEnv);
 
   return {
-    plugins: [pdfJsCMapsPlugin(), react(), tailwindcss(), thirdPartyNoticesVitePlugin()],
+    plugins: [
+      phoneMobileViewportBranchesPlugin(),
+      pdfJsCMapsPlugin(),
+      react(),
+      tailwindcss(),
+      thirdPartyNoticesVitePlugin(),
+    ],
     resolve: {
       alias: {
         // 修复 UI 组件库中的 @ 别名解析失败。

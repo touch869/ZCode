@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import {
   AppErrorBoundary,
   Root,
+  ServiceProvider,
   ZCodeIntlProvider,
   generateMobileDeviceFingerprint,
   playTaskNotificationSound,
@@ -11,6 +12,7 @@ import {
 } from "@zcode/ui";
 import "@zcode/ui/styles.css";
 import { connectViaWebSocket } from "@zcode/client";
+import { PhoneShell } from "./phone/PhoneShell.js";
 import { WebCallbackPage } from "./auth/WebCallbackPage.js";
 import { createWebAuthService } from "./auth/webAuthService.js";
 import { WEB_ZAI_OAUTH_CONFIG, resolveWebAuthDevReturnTo } from "./auth/webZaiOAuthConfig.js";
@@ -481,6 +483,12 @@ async function bootstrapWebApp() {
 
     root.render(
       <AppErrorBoundary>
+        {/* 手机远控壳：独立增量层（列表页 overlay + 聊天页返回条），仅 <768px 视口激活，
+            官方 Root 原树不感知（详见 src/phone/PhoneShell.tsx 头注）。
+            ServiceProvider 供手机壳的官方数据 hooks 读取（与 Root 内部同源 services）。 */}
+        <ServiceProvider services={services}>
+          <PhoneShell />
+        </ServiceProvider>
         <ZCodeIntlProvider
           settingService={services.settingService}
           broadcastService={services.broadcastService}
