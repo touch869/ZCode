@@ -330,8 +330,28 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
     }
 
     port1.start();
-    const entry = { connectedAt: Date.now() };
+    const entry = { connectedAt: Date.now(), isAlive: true };
     activeConnections.add(entry);
+    // 心跳：DERP 中继/NAT 会在静默期回收映射，iOS 后台挂起也只会留下半开连接。
+    // 25s ping + 两轮无 pong 即 terminate，让手机端尽快收到 close 并触发重连。
+    const pingTimer = setInterval(() => {
+      if (closed) {
+        return;
+      }
+      if (!entry.isAlive) {
+        ws.terminate();
+        return;
+      }
+      entry.isAlive = false;
+      try {
+        ws.ping();
+      } catch {
+        // ping 失败说明连接已坏，等下一轮 terminate
+      }
+    }, 25_000);
+    ws.on("pong", () => {
+      entry.isAlive = true;
+    });
     const socket = wrapWebSocket(ws);
     const protocol = new SocketProtocol(socket);
     let closed = false;
@@ -340,6 +360,7 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
         return;
       }
       closed = true;
+      clearInterval(pingTimer);
       activeConnections.delete(entry);
       protocol.dispose();
       try {

@@ -419,6 +419,39 @@ function renderWebBootstrapError(error: unknown): void {
   );
 }
 
+/**
+ * 手机端（iOS 切后台/锁屏）会话被系统杀掉后，Web 客户端没有任何自动恢复路径，
+ * 任务列表等一切订阅停在 pending（表现为「正在获取任务」）。这里在 WS 断开后
+ * 轮询服务端，恢复可达即整页重载，重建全部连接与订阅。
+ */
+let reconnectReloadScheduled = false;
+function scheduleReconnectReload(): void {
+  if (reconnectReloadScheduled) {
+    return;
+  }
+  reconnectReloadScheduled = true;
+  const overlay = document.createElement("div");
+  overlay.setAttribute("data-testid", "web-reconnecting");
+  overlay.textContent = /^zh\b/i.test(navigator.language) ? "连接已断开，正在重连…" : "Disconnected, reconnecting…";
+  overlay.style.cssText =
+    "position:fixed;inset:auto 0 0 0;z-index:9999;padding:8px 16px;text-align:center;" +
+    "font:12px/1.6 system-ui,sans-serif;background:#4f46e5;color:#fff;";
+  document.body.appendChild(overlay);
+  const tryReload = async () => {
+    try {
+      const response = await fetch("/api/server-info", { cache: "no-store" });
+      if (response.ok) {
+        window.location.reload();
+        return;
+      }
+    } catch {
+      // 服务端仍不可达（桌面休眠/网络切换），继续等待
+    }
+    setTimeout(() => void tryReload(), 3000);
+  };
+  setTimeout(() => void tryReload(), 1500);
+}
+
 async function bootstrapWebApp() {
   const params = new URLSearchParams(window.location.search);
   if (isWebOAuthCallback(params)) {
@@ -441,7 +474,7 @@ async function bootstrapWebApp() {
 
   try {
     const services = await connectViaWebSocket(bootstrap.wsUrl, {
-      onClose: () => {},
+      onClose: () => scheduleReconnectReload(),
     });
     const platform = createWebPlatform();
     document.title = "ZCode - Web + Server";
