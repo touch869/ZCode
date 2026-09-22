@@ -21,7 +21,7 @@
 #   - 只杀 electron.exe（源码开发版）；官方安装版进程是 ZCode.exe，不受影响。
 #   - 渲染层由 vite dev (5174) 热更新：存活则复用（改 UI 源码无需重编），
 #     未运行则自动后台拉起。Windows 上 vite 可能只绑 [::1]，探活需双栈。
-#   - 数据目录隔离在 C:\Users\hgq\.zcode-dev-home，与官方安装版互不干扰。
+#   - 数据目录 = 真实 ~/.zcode（与官方安装版共用；两版不可同时运行，否则会争抢同一个 tasks-index 数据库）。
 #   - 运行日志：/tmp/zcode-dev-relaunch.log（vite: .log.vite）
 #   - 跑过 pnpm install 后 electron 二进制会被清掉，本脚本会自动重装。
 # ============================================================================
@@ -31,7 +31,6 @@ REPO="/c/software/ZCode"
 DESKTOP="$REPO/packages/desktop"
 WEB="$REPO/packages/web"
 NODE_BIN="/c/software/node24/node-v24.14.0-win-x64"
-DATA_DIR='C:\Users\hgq\.zcode-dev-home'
 LOG="${TMPDIR:-/tmp}/zcode-dev-relaunch.log"
 FAILED_LOG="${LOG}.failed"
 OUT_DIR="$DESKTOP/out"
@@ -43,7 +42,6 @@ HEALTH_PORT="${HEALTH_PORT:-41889}"
 export PATH="$NODE_BIN:$PATH"
 export ZCODE_ENV=production
 export ZCODE_DESKTOP_AGENT_BYTECODE=0
-export ZCODE_DATA_BASE_DIR="$DATA_DIR"
 
 step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
