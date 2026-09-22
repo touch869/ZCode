@@ -1919,6 +1919,7 @@ app.whenReady().then(async () => {
       app.quit();
     },
     logger,
+    openPhoneRemotePanel: () => phoneRemoteServer?.openPanelWindow(),
   });
 
   registerPlatformIpcHandlers({
