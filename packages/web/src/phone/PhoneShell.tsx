@@ -4,8 +4,9 @@
  * 架构（对齐官方 /remote/v4 两页形态；官方手机壳为闭源注入件，此处自建）：
  * - 列表页：本模块的全屏 overlay 卡片首页。工作区列表订阅官方
  *   WindowController 的 controller/workspaces 投影（全设备口径，与官方一致），
- *   任务列表复用官方 useGlobalTaskList；样式全部用应用自带 tailwind 主题类，
- *   浅色/深色主题自动跟随（不再自造颜色）。
+ *   任务列表复用官方 useGlobalTaskList；卡片视觉对齐官方（图标块+名称/徽标+
+ *   路径/任务数+更新时间三行卡，默认折叠，点卡片展开/折叠，右侧 + 新建任务）。
+ *   样式全部用应用自带 tailwind 主题类，浅色/深色主题自动跟随。
  * - 聊天页：官方应用原树（SessionPane 等）原样复用、零重写，官方升级自动继承。
  *   这里只做两件事：CSS 收起侧栏（html.zcode-chat）+ 顶部返回条。
  *
@@ -13,7 +14,7 @@
  * 增量导出的既有模块与 @zcode/shared 协议常量。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronRight, Cloud, Folder, Plus } from "lucide-react";
 import {
   useGlobalTaskList,
   useServices,
@@ -189,7 +190,22 @@ function basename(path: string): string {
   return last || path;
 }
 
-function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
+type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
+
+function statusMeta(status?: string): { label: string; cls: string } {
+  if (status === "running") {
+    return { label: ZH ? "运行中" : "running", cls: "text-success" };
+  }
+  if (status === "error") {
+    return { label: ZH ? "出错" : "error", cls: "text-destructive" };
+  }
+  return { label: ZH ? "已完成" : "done", cls: "text-foreground-subtle" };
+}
+
+function PhoneTaskHome(props: {
+  onOpenTask: (task: TaskListItem) => void;
+  onOpenDraft: (fact: WorkspaceFactLite) => void;
+}) {
   const workspaces = useControllerWorkspaces();
   const workspaceTabs = useMemo(
     () =>
@@ -209,32 +225,24 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
     expanded: true,
     collapsedLimit: 500,
   });
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
-  const orderedKeys = useMemo(
-    () =>
-      workspaces
-        .map(workspaceKeyOf)
-        .sort((left, right) => {
-          const leftLatest = Math.max(
-            0,
-            ...items.filter((item) => item.workspaceIdentity?.trim() || item.workspacePath === left).map((item) => item.updatedAt ?? 0),
-          );
-          const rightLatest = Math.max(
-            0,
-            ...items.filter((item) => item.workspaceIdentity?.trim() || item.workspacePath === right).map((item) => item.updatedAt ?? 0),
-          );
-          return rightLatest - leftLatest;
-        }),
-    [workspaces, items],
-  );
+  // 官方形态：卡片默认折叠，点卡片本身展开/折叠（无独立箭头按钮）。
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const tasksByKey = useMemo(() => {
     const map = new Map<string, WindowHostControllerTaskListItem[]>();
     for (const item of items) {
       const key = item.workspaceIdentity?.trim() || item.workspacePath;
       map.set(key, [...(map.get(key) ?? []), item]);
     }
+    for (const [key, tasks] of map) {
+      tasks.sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+    }
     return map;
   }, [items]);
+  const orderedKeys = useMemo(() => {
+    const latestOf = (key: string) =>
+      Math.max(0, ...(tasksByKey.get(key) ?? []).map((task) => task.updatedAt ?? 0));
+    return workspaces.map(workspaceKeyOf).sort((left, right) => latestOf(right) - latestOf(left));
+  }, [workspaces, tasksByKey]);
 
   return (
     <div
@@ -242,34 +250,44 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
       style={{ zIndex: 2000000000, paddingTop: 18, paddingBottom: 24 }}
     >
       <h1 className="text-xl font-semibold">{ZH ? "ZCode 远程控制" : "ZCode Remote Control"}</h1>
-      <p className="mt-1 text-xs text-foreground-subtle">
+      <p className="mt-1 text-[13px] text-foreground-subtle">
         {ZH ? "已连接到当前桌面窗口" : "Connected to the current desktop window"}
       </p>
-      <h2 className="mt-6 flex flex-wrap items-baseline gap-2 text-sm font-semibold">
+      <div className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-[13px] leading-relaxed text-foreground-subtle">
+        {ZH
+          ? "本次连接可以查看当前设备上已打开的项目、任务和会话；二维码失效后需要回到桌面端重新连接。"
+          : "This connection shows the projects, tasks and sessions currently open on this device; the QR code expires and requires re-pairing from the desktop app."}
+      </div>
+      <h2 className="mt-6 text-[15px] font-semibold">
         {ZH ? "当前设备上的工作区和任务" : "Workspaces & tasks"}
-        <span className="text-xs font-normal text-foreground-subtle">
-          {ZH
-            ? `${workspaces.length} 个工作区 · ${items.length} 个任务`
-            : `${workspaces.length} workspaces · ${items.length} tasks`}
-        </span>
       </h2>
+      <p className="mt-0.5 text-[13px] text-foreground-subtle">
+        {ZH
+          ? `${workspaces.length} 个工作区 · ${items.length} 个任务`
+          : `${workspaces.length} workspaces · ${items.length} tasks`}
+      </p>
       {orderedKeys.map((key) => {
         const fact = workspaces.find((candidate) => workspaceKeyOf(candidate) === key);
         if (!fact) {
           return null;
         }
         const tasks = tasksByKey.get(key) ?? [];
-        const collapsed = collapsedKeys.has(key);
+        const expanded = expandedKeys.has(key);
         const latest = Math.max(0, ...tasks.map((task) => task.updatedAt ?? 0));
         const running = tasks.filter((task) => task.status === "running").length;
+        const hasUnread = tasks.some((task) => task.unreadAt);
         const isRemote = Boolean(fact.remoteSessionId);
         return (
-          <section key={key} className="mt-3 overflow-hidden rounded-2xl border border-border bg-card">
-            <button
-              type="button"
-              className="flex w-full flex-wrap items-baseline gap-x-2.5 gap-y-1 px-4 py-3.5 text-left"
+          <section
+            key={key}
+            className="mt-3 overflow-hidden rounded-xl border border-border bg-card"
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-4"
               onClick={() =>
-                setCollapsedKeys((current) => {
+                setExpandedKeys((current) => {
                   const next = new Set(current);
                   if (next.has(key)) {
                     next.delete(key);
@@ -280,101 +298,109 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
                 })
               }
             >
-              {collapsed ? (
-                <ChevronRight className="size-4 self-center text-foreground-subtle" />
-              ) : (
-                <ChevronDown className="size-4 self-center text-foreground-subtle" />
-              )}
-              <span className="text-base font-semibold">{basename(key)}</span>
-              <span className="rounded-full border border-border px-2 py-px text-xs text-foreground-subtle">
-                {fact.sourceAvailability === "offline"
-                  ? ZH
-                    ? "离线"
-                    : "offline"
-                  : isRemote
-                    ? ZH
-                      ? "远程"
-                      : "remote"
-                    : ZH
-                      ? "本地"
-                      : "local"}
+              <span className="flex size-10 flex-none items-center justify-center rounded-lg bg-surface-hover text-foreground-subtle">
+                {isRemote ? <Cloud className="size-5" /> : <Folder className="size-5" />}
               </span>
-              {running > 0 ? (
-                <span className="rounded-full border border-success/40 px-2 py-px text-xs text-success">
-                  {ZH ? `${running} 运行中` : `${running} running`}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-[17px] font-semibold leading-6">
+                    {basename(key)}
+                  </span>
+                  <span className="flex-none rounded-full border border-border px-2 py-px text-xs text-foreground-subtle">
+                    {fact.sourceAvailability === "offline"
+                      ? ZH
+                        ? "离线"
+                        : "offline"
+                      : isRemote
+                        ? ZH
+                          ? "远程"
+                          : "remote"
+                        : ZH
+                          ? "本地"
+                          : "local"}
+                  </span>
                 </span>
-              ) : null}
-              <span className="ml-auto text-xs text-foreground-subtle">
-                {tasks.length} {ZH ? "个任务" : "tasks"}
-                {latest > 0 ? <> · {formatRelativeTime(latest)}</> : null}
+                <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-foreground-subtle">
+                  <span className="min-w-0 truncate font-mono">{fact.workspacePath}</span>
+                  {hasUnread ? (
+                    <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
+                  ) : null}
+                  <span className="flex-none">{tasks.length} 个任务</span>
+                  <ChevronRight
+                    className={`size-3.5 flex-none transition-transform ${
+                      expanded ? "rotate-90" : ""
+                    }`}
+                  />
+                </span>
+                <span className="mt-0.5 block text-[13px] text-foreground-subtle">
+                  {latest > 0
+                    ? ZH
+                      ? `更新于 ${formatRelativeTime(latest)}`
+                      : `updated ${formatRelativeTime(latest)}`
+                    : ZH
+                      ? "暂无任务"
+                      : "no tasks"}
+                </span>
               </span>
-            </button>
-            {!collapsed ? (
-              tasks.length > 0 ? (
-                <ul className="px-1.5 pb-2">
-                  {tasks.map((task) => (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={ZH ? "新建任务" : "New task"}
+                className="flex size-9 flex-none items-center justify-center rounded-lg border border-border text-foreground-subtle active:bg-surface-hover"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onOpenDraft(fact);
+                }}
+              >
+                <Plus className="size-4" />
+              </span>
+            </div>
+            {expanded && running > 0 ? (
+              <p className="px-4 pb-1 text-xs text-success">
+                {ZH ? `${running} 个任务运行中` : `${running} running`}
+              </p>
+            ) : null}
+            {expanded && tasks.length > 0 ? (
+              <ul className="px-1.5 pb-2">
+                {tasks.map((task) => {
+                  const status = statusMeta(task.status);
+                  return (
                     <li key={task.taskId}>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-lg border-t border-border px-2.5 py-3 text-left text-sm hover:bg-surface-hover"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-sm hover:bg-surface-hover"
                         onClick={() => props.onOpenTask(task)}
                       >
                         {task.unreadAt ? (
                           <span className="size-2 flex-none rounded-full bg-[#4f8ef7]" />
                         ) : null}
                         <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                        <span
-                          className={`flex-none text-xs ${
-                            task.status === "running"
-                              ? "text-success"
-                              : task.status === "error"
-                                ? "text-destructive"
-                                : "text-foreground-subtle"
-                          }`}
-                        >
-                          {task.status === "running"
-                            ? ZH
-                              ? "运行中"
-                              : "running"
-                            : task.status === "error"
-                              ? ZH
-                                ? "出错"
-                                : "error"
-                              : ZH
-                                ? "已完成"
-                                : "done"}
-                        </span>
+                        <span className={`flex-none text-xs ${status.cls}`}>{status.label}</span>
                         <span className="flex-none text-xs text-foreground-subtle">
                           {formatRelativeTime(task.updatedAt)}
                         </span>
                       </button>
                     </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="px-4 pb-3 text-xs text-foreground-subtlest">
-                  {ZH ? "暂无任务" : "No tasks yet"}
-                </p>
-              )
+                  );
+                })}
+              </ul>
             ) : null}
           </section>
         );
       })}
       {loading && items.length === 0 ? (
-        <p className="mt-10 text-center text-xs text-foreground-subtle">
+        <p className="mt-10 text-center text-[13px] text-foreground-subtle">
           {ZH ? "正在获取任务…" : "Loading tasks…"}
         </p>
       ) : null}
       {!loading && orderedKeys.length === 0 ? (
-        <p className="mt-10 text-center text-xs text-foreground-subtle">
+        <p className="mt-10 text-center text-[13px] text-foreground-subtle">
           {ZH ? "暂无工作区" : "No workspaces yet"}
         </p>
       ) : null}
     </div>
   );
 }
-
-type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
 
 export function PhoneShell() {
   const isPhone = usePhoneViewport();
@@ -390,12 +416,6 @@ export function PhoneShell() {
     root.classList.toggle("zcode-phone", isPhone);
     root.classList.toggle("zcode-chat", isPhone && activeEntry != null);
     root.classList.toggle("zcode-list", isPhone && activeEntry == null);
-    return () => {
-      root.classList.remove("zcode-phone", "zcode-chat", "zcode-list");
-    };
-  }, [isPhone, activeEntry]);
-
-  useEffect(() => {
     // 聊天页收起官方侧栏与分隔条（#sidebar/resizable-handle 为官方稳定 DOM 标记）。
     // 样式随本模块自包含注入，不落官方文件。
     const style = document.createElement("style");
@@ -406,8 +426,9 @@ export function PhoneShell() {
     document.head.appendChild(style);
     return () => {
       style.remove();
+      root.classList.remove("zcode-phone", "zcode-chat", "zcode-list");
     };
-  }, []);
+  }, [isPhone, activeEntry]);
 
   if (!isPhone) {
     return null;
@@ -431,6 +452,7 @@ export function PhoneShell() {
         onOpenTask={(task) =>
           setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity)
         }
+        onOpenDraft={(fact) => setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity)}
       />
     </div>
   );
