@@ -2,17 +2,29 @@
  * 手机远控壳（Phone Shell）—— 完全独立于官方组件树的增量层。
  *
  * 架构（对齐官方 /remote/v4 两页形态；官方手机壳为闭源注入件，此处自建）：
- * - 列表页：本模块的全屏 overlay 卡片首页，数据全部消费官方既有模块
- *   （useGlobalTaskList / useZCodeSessionStore，经 @zcode/ui 增量导出）；
+ * - 列表页：本模块的全屏 overlay 卡片首页。工作区列表订阅官方
+ *   WindowController 的 controller/workspaces 投影（全设备口径，与官方一致），
+ *   任务列表复用官方 useGlobalTaskList；卡片视觉对齐官方（图标块+名称/徽标+
+ *   路径/任务数+更新时间三行卡，默认折叠，点卡片展开/折叠，右侧 + 新建任务）。
+ *   样式全部用应用自带 tailwind 主题类，浅色/深色主题自动跟随。
  * - 聊天页：官方应用原树（SessionPane 等）原样复用、零重写，官方升级自动继承。
  *   这里只做两件事：CSS 收起侧栏（html.zcode-chat）+ 顶部返回条。
  *
- * rebase 约束：本目录不 import 官方组件内部实现；官方文件只允许
- * 「增量导出」级别的接触（见 packages/ui/src/index.ts 末尾）。
+ * rebase 约束：本目录不 import 官方组件内部实现；仅消费 @zcode/ui 主入口
+ * 增量导出的既有模块与 @zcode/shared 协议常量。
  */
-import { useEffect, useMemo, useState } from "react";
-import { useGlobalTaskList, useZCodeSessionStore } from "@zcode/ui";
-import "./phone.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronRight, Cloud, Folder, Plus, Zap } from "lucide-react";
+import {
+  useGlobalTaskList,
+  useServices,
+  useZCodeSessionStore,
+  type WindowHostControllerTaskListItem,
+} from "@zcode/ui";
+
+// 与 @zcode/shared 的 CONTROLLER_WORKSPACES_TOPIC 一致（shared 主入口未导出，
+// 为不扩官方导出面而在此内联协议字面量）。
+const CONTROLLER_WORKSPACES_TOPIC = "controller/workspaces";
 
 const ZH = /^zh\b/i.test(navigator.language);
 const PHONE_QUERY = "(max-width: 767px)";
@@ -33,6 +45,128 @@ function usePhoneViewport(): boolean {
 (globalThis as Record<string, unknown>).__zcodePhoneViewport = () =>
   window.matchMedia(PHONE_QUERY).matches;
 
+interface WorkspaceFactLite {
+  workspacePath: string;
+  workspaceIdentity?: string;
+  remoteSessionId?: string;
+  sourceAvailability: "online" | "offline";
+}
+
+const workspaceKeyOf = (fact: {
+  workspacePath: string;
+  workspaceIdentity?: string;
+}) => fact.workspaceIdentity?.trim() || fact.workspacePath;
+
+/**
+ * 订阅 WindowController 的 controller/workspaces 投影（与桌面侧栏/官方手机端同源），
+ * 维护全设备工作区事实列表。快照整体替换；delta 增量应用；seq 断档即重订阅。
+ */
+function useControllerWorkspaces(): WorkspaceFactLite[] {
+  const services = useServices();
+  const controller = services?.windowControllerService ?? null;
+  const [workspaces, setWorkspaces] = useState<WorkspaceFactLite[]>([]);
+  const generationRef = useRef(0);
+
+  useEffect(() => {
+    if (!controller) {
+      return;
+    }
+    const generation = ++generationRef.current;
+    let subscriptionIds: string[] = [];
+    let lastSeqByTopic = new Map<string, number>();
+    let disposed = false;
+
+    const applyFrame = (frame: {
+      topic: string;
+      logEpoch: string;
+      fromSeq: number;
+      toSeq: number;
+      payload: { kind: string };
+    }) => {
+      if (frame.topic !== CONTROLLER_WORKSPACES_TOPIC) {
+        return;
+      }
+      const expected = lastSeqByTopic.get(frame.topic);
+      if (expected !== undefined && frame.fromSeq > expected + 1) {
+        // seq 断档：放弃本地投影，重订阅拿新快照
+        throw new Error("controller/workspaces seq gap");
+      }
+      lastSeqByTopic.set(frame.topic, frame.toSeq);
+      const payload = frame.payload as
+        | {
+            kind: "snapshot";
+            snapshot: { workspaces: WorkspaceFactLite[] };
+          }
+        | {
+            kind: "deltas";
+            deltas: Array<
+              | { op: "workspace.upserted"; workspace: WorkspaceFactLite }
+              | { op: "workspace.removed"; workspacePath: string; workspaceIdentity?: string }
+            >;
+          };
+      setWorkspaces((current) => {
+        if (payload.kind === "snapshot") {
+          return payload.snapshot.workspaces.map((fact) => ({ ...fact }));
+        }
+        const next = new Map(current.map((fact) => [workspaceKeyOf(fact), fact]));
+        for (const delta of payload.deltas) {
+          if (delta.op === "workspace.upserted") {
+            next.set(workspaceKeyOf(delta.workspace), { ...delta.workspace });
+          } else {
+            next.delete(workspaceKeyOf(delta));
+          }
+        }
+        return Array.from(next.values());
+      });
+    };
+
+    const start = async () => {
+      const disposable = controller.onDynamicControllerFrame()((frame) => {
+        try {
+          applyFrame(frame as Parameters<typeof applyFrame>[0]);
+        } catch {
+          // seq 断档：重新订阅
+          if (generation === generationRef.current && !disposed) {
+            for (const id of subscriptionIds) {
+              void controller.unsubscribeControllerV4({ subscriptionId: id }).catch(() => {});
+            }
+            subscriptionIds = [];
+            lastSeqByTopic = new Map();
+            void start();
+          }
+        }
+      });
+      if (disposed) {
+        disposable.dispose();
+        return;
+      }
+      try {
+        const result = await controller.subscribeControllerV4({
+          topic: CONTROLLER_WORKSPACES_TOPIC,
+          visibility: "foreground",
+        });
+        if (disposed || generation !== generationRef.current) {
+          void controller.unsubscribeControllerV4({ subscriptionId: result.ack.subscriptionId });
+          return;
+        }
+        subscriptionIds.push(result.ack.subscriptionId);
+      } catch {
+        // 订阅失败保持空列表；controller 恢复后由本 effect 的依赖变化重试
+      }
+    };
+
+    void start();
+    return () => {
+      disposed = true;
+      for (const id of subscriptionIds) {
+        void controller.unsubscribeControllerV4({ subscriptionId: id }).catch(() => {});
+      }
+    };
+  }, [controller]);
+
+  return workspaces;
+}
+
 function formatRelativeTime(timestamp: number | undefined): string {
   if (!Number.isFinite(timestamp ?? NaN)) {
     return "";
@@ -50,27 +184,91 @@ function formatRelativeTime(timestamp: number | undefined): string {
   return `${Math.floor(delta / 86_400_000)}${ZH ? "天" : "d"}`;
 }
 
-type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
-
 function basename(path: string): string {
   const normalized = path.replace(/[\\/]+$/, "");
   const last = normalized.split(/[\\/]/).pop();
   return last || path;
 }
 
-function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
-  // zustand v5（useSyncExternalStore）要求 selector 返回稳定引用；
-  // 派生数组必须在 useMemo 里做，否则触发 React #185 无限更新。
-  const workspaces = useZCodeSessionStore((state) => state.workspaces);
-  const workspaceKeys = useMemo(() => Object.keys(workspaces), [workspaces]);
+type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
+
+/** 官方 E2E 桥暴露的应用真实 tab store（见 vite.config.ts define；仅手机 web 构建）。 */
+declare global {
+  interface Window {
+    __zcodeTabStoreE2E?: {
+      getState(): {
+        activateTabByPath(
+          workspacePath: string,
+          options?: { workspaceIdentity?: string },
+        ): boolean;
+      };
+    };
+  }
+}
+
+/**
+ * 打开任务/草稿前先按官方流程激活目标 workspace 的 tab：
+ * 聊天区只渲染当前激活 tab 的工作区投影，跳过激活会显示成别的
+ * 工作区的新对话（真机已复现）。桥未就绪时退化为仅 setActiveTaskId。
+ */
+function activateWorkspaceTab(
+  workspacePath: string,
+  workspaceIdentity?: string,
+): void {
+  const store = window.__zcodeTabStoreE2E;
+  if (!store) {
+    return;
+  }
+  try {
+    store.getState().activateTabByPath(
+      workspacePath,
+      workspaceIdentity ? { workspaceIdentity } : undefined,
+    );
+  } catch {
+    // 激活失败不阻断：维持旧行为
+  }
+}
+
+/** 官方形态的状态胶囊：运行中=浅底闪电，已完成=绿底白字对勾，出错=红底白字。 */
+function StatusPill({ status }: { status?: string }) {
+  if (status === "running") {
+    return (
+      <span className="flex flex-none items-center gap-1 rounded-full border border-border bg-surface-hover px-2.5 py-1 text-ui-xs text-foreground">
+        <Zap className="size-3" />
+        {ZH ? "运行中" : "running"}
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <span className="flex flex-none items-center gap-1 rounded-full bg-destructive px-2.5 py-1 text-ui-xs text-white">
+        <Check className="size-3" />
+        {ZH ? "出错" : "error"}
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-none items-center gap-1 rounded-full bg-success px-2.5 py-1 text-ui-xs text-white">
+      <Check className="size-3" />
+      {ZH ? "已完成" : "done"}
+    </span>
+  );
+}
+
+function PhoneTaskHome(props: {
+  onOpenTask: (task: TaskListItem) => void;
+  onOpenDraft: (fact: WorkspaceFactLite) => void;
+}) {
+  const workspaces = useControllerWorkspaces();
   const workspaceTabs = useMemo(
     () =>
-      workspaceKeys.map((key) => ({
+      workspaces.map((fact) => ({
         kind: "workspace" as const,
-        id: key,
-        workspacePath: key,
+        id: workspaceKeyOf(fact),
+        workspacePath: fact.workspacePath,
+        ...(fact.workspaceIdentity ? { workspaceIdentity: fact.workspaceIdentity } : {}),
       })) as unknown as Parameters<typeof useGlobalTaskList>[0]["workspaceTabs"],
-    [workspaceKeys],
+    [workspaces],
   );
   const { items, loading } = useGlobalTaskList({
     kind: "timeline",
@@ -80,43 +278,69 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
     expanded: true,
     collapsedLimit: 500,
   });
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
-  const groups = useMemo(() => {
-    const map = new Map<string, { tasks: TaskListItem[]; latest: number }>();
+  // 官方形态：卡片默认折叠，点卡片本身展开/折叠（无独立箭头按钮）。
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const tasksByKey = useMemo(() => {
+    const map = new Map<string, WindowHostControllerTaskListItem[]>();
     for (const item of items) {
       const key = item.workspaceIdentity?.trim() || item.workspacePath;
-      const entry = map.get(key) ?? { tasks: [], latest: 0 };
-      entry.tasks.push(item);
-      entry.latest = Math.max(entry.latest, item.updatedAt ?? 0);
-      map.set(key, entry);
+      map.set(key, [...(map.get(key) ?? []), item]);
     }
-    return Array.from(map.entries()).sort(([, a], [, b]) => b.latest - a.latest);
+    for (const [key, tasks] of map) {
+      tasks.sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0));
+    }
+    return map;
   }, [items]);
+  const orderedKeys = useMemo(() => {
+    const latestOf = (key: string) =>
+      Math.max(0, ...(tasksByKey.get(key) ?? []).map((task) => task.updatedAt ?? 0));
+    return workspaces.map(workspaceKeyOf).sort((left, right) => latestOf(right) - latestOf(left));
+  }, [workspaces, tasksByKey]);
 
   return (
-    <div className="phone-home">
-      <h1 className="phone-home-title">{ZH ? "ZCode 远程控制" : "ZCode Remote Control"}</h1>
-      <p className="phone-home-subtitle">
+    <div
+      className="fixed inset-0 overflow-y-auto bg-background px-4 text-foreground"
+      style={{ zIndex: 2000000000, paddingTop: 18, paddingBottom: 24 }}
+    >
+      <h1 className="text-ui-xl font-semibold">{ZH ? "ZCode 远程控制" : "ZCode Remote Control"}</h1>
+      <p className="mt-1 text-ui-base text-foreground-subtle">
         {ZH ? "已连接到当前桌面窗口" : "Connected to the current desktop window"}
       </p>
-      <h2 className="phone-home-section">
+      <div className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-ui-sm leading-relaxed text-foreground-subtle">
+        {ZH
+          ? "本次连接可以查看当前设备上已打开的项目、任务和会话；二维码失效后需要回到桌面端重新连接。"
+          : "This connection shows the projects, tasks and sessions currently open on this device; the QR code expires and requires re-pairing from the desktop app."}
+      </div>
+      <h2 className="mt-6 text-ui-base font-semibold">
         {ZH ? "当前设备上的工作区和任务" : "Workspaces & tasks"}
-        <span className="phone-home-summary">
-          {ZH
-            ? `${workspaceKeys.length} 个工作区 · ${items.length} 个任务`
-            : `${workspaceKeys.length} workspaces · ${items.length} tasks`}
-        </span>
       </h2>
-      {groups.map(([key, group]) => {
-        const collapsed = collapsedKeys.has(key);
-        const running = group.tasks.filter((task) => task.status === "running").length;
+      <p className="mt-0.5 text-ui-sm text-foreground-subtle">
+        {ZH
+          ? `${workspaces.length} 个工作区 · ${items.length} 个任务`
+          : `${workspaces.length} workspaces · ${items.length} tasks`}
+      </p>
+      {orderedKeys.map((key) => {
+        const fact = workspaces.find((candidate) => workspaceKeyOf(candidate) === key);
+        if (!fact) {
+          return null;
+        }
+        const tasks = tasksByKey.get(key) ?? [];
+        const expanded = expandedKeys.has(key);
+        const latest = Math.max(0, ...tasks.map((task) => task.updatedAt ?? 0));
+        const running = tasks.filter((task) => task.status === "running").length;
+        const hasUnread = tasks.some((task) => task.unreadAt);
+        const isRemote = Boolean(fact.remoteSessionId);
         return (
-          <section key={key} className="phone-card">
-            <button
-              type="button"
-              className="phone-card-header"
+          <section
+            key={key}
+            className="mt-3 overflow-hidden rounded-xl border border-border bg-card"
+          >
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-4"
               onClick={() =>
-                setCollapsedKeys((current) => {
+                setExpandedKeys((current) => {
                   const next = new Set(current);
                   if (next.has(key)) {
                     next.delete(key);
@@ -127,43 +351,88 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
                 })
               }
             >
-              <span className="phone-card-name">{basename(key)}</span>
-              {running > 0 ? (
-                <span className="phone-badge phone-badge-running">
-                  {ZH ? `${running} 运行中` : `${running} running`}
-                </span>
-              ) : null}
-              <span className="phone-card-meta">
-                {group.tasks.length} {ZH ? "个任务" : "tasks"} · {formatRelativeTime(group.latest)}
+              <span className="flex size-10 flex-none items-center justify-center rounded-lg bg-surface-hover text-foreground-subtle">
+                {isRemote ? <Cloud className="size-5" /> : <Folder className="size-5" />}
               </span>
-            </button>
-            {!collapsed ? (
-              <ul className="phone-task-list">
-                {group.tasks.map((task) => (
-                  <li key={task.taskId}>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-ui-lg font-semibold leading-6">
+                    {basename(key)}
+                  </span>
+                  <span className="flex-none rounded-full border border-border px-2 py-px text-ui-xs text-foreground-subtle">
+                    {fact.sourceAvailability === "offline"
+                      ? ZH
+                        ? "离线"
+                        : "offline"
+                      : isRemote
+                        ? ZH
+                          ? "远程"
+                          : "remote"
+                        : ZH
+                          ? "本地"
+                          : "local"}
+                  </span>
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-ui-sm text-foreground-subtle">
+                  <span className="min-w-0 truncate font-mono">{fact.workspacePath}</span>
+                  {hasUnread ? (
+                    <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
+                  ) : null}
+                  <span className="flex-none">{tasks.length} 个任务</span>
+                  <ChevronRight
+                    className={`size-3.5 flex-none transition-transform ${
+                      expanded ? "rotate-90" : ""
+                    }`}
+                  />
+                </span>
+                <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
+                  {latest > 0
+                    ? ZH
+                      ? `更新于 ${formatRelativeTime(latest)}`
+                      : `updated ${formatRelativeTime(latest)}`
+                    : ZH
+                      ? "暂无任务"
+                      : "no tasks"}
+                </span>
+              </span>
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label={ZH ? "新建任务" : "New task"}
+                className="flex size-9 flex-none items-center justify-center rounded-lg border border-border text-foreground-subtle active:bg-surface-hover"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onOpenDraft(fact);
+                }}
+              >
+                <Plus className="size-4" />
+              </span>
+            </div>
+            {expanded && running > 0 ? (
+              <p className="px-4 pb-1 text-xs text-success">
+                {ZH ? `${running} 个任务运行中` : `${running} running`}
+              </p>
+            ) : null}
+            {expanded && tasks.length > 0 ? (
+              <ul className="pb-2 pt-1">
+                {tasks.map((task) => (
+                  <li key={task.taskId} className="relative">
+                    {task.unreadAt ? (
+                      <span className="absolute left-5 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-[#4f8ef7]" />
+                    ) : null}
                     <button
                       type="button"
-                      className="phone-task-row"
+                      className="flex items-center gap-3 rounded-xl px-2.5 py-3 text-left hover:bg-surface-hover"
+                      style={{ marginLeft: 68, width: "calc(100% - 68px)" }}
                       onClick={() => props.onOpenTask(task)}
                     >
-                      {task.unreadAt ? <span className="phone-unread-dot" /> : null}
-                      <span className="phone-task-title">{task.title}</span>
-                      <span
-                        className={`phone-task-status phone-task-status-${task.status ?? "completed"}`}
-                      >
-                        {task.status === "running"
-                          ? ZH
-                            ? "运行中"
-                            : "running"
-                          : task.status === "error"
-                            ? ZH
-                              ? "出错"
-                              : "error"
-                            : ZH
-                              ? "已完成"
-                              : "done"}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-ui-base">{task.title}</span>
+                        <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
+                          {formatRelativeTime(task.updatedAt)}
+                        </span>
                       </span>
-                      <span className="phone-task-time">{formatRelativeTime(task.updatedAt)}</span>
+                      <StatusPill status={task.status} />
                     </button>
                   </li>
                 ))}
@@ -173,10 +442,14 @@ function PhoneTaskHome(props: { onOpenTask: (task: TaskListItem) => void }) {
         );
       })}
       {loading && items.length === 0 ? (
-        <p className="phone-home-loading">{ZH ? "正在获取任务…" : "Loading tasks…"}</p>
+        <p className="mt-10 text-center text-ui-sm text-foreground-subtle">
+          {ZH ? "正在获取任务…" : "Loading tasks…"}
+        </p>
       ) : null}
-      {!loading && groups.length === 0 ? (
-        <p className="phone-home-loading">{ZH ? "暂无任务" : "No tasks yet"}</p>
+      {!loading && orderedKeys.length === 0 ? (
+        <p className="mt-10 text-center text-ui-sm text-foreground-subtle">
+          {ZH ? "暂无工作区" : "No workspaces yet"}
+        </p>
       ) : null}
     </div>
   );
@@ -196,29 +469,98 @@ export function PhoneShell() {
     root.classList.toggle("zcode-phone", isPhone);
     root.classList.toggle("zcode-chat", isPhone && activeEntry != null);
     root.classList.toggle("zcode-list", isPhone && activeEntry == null);
+    // 聊天页收起官方侧栏与分隔条（#sidebar/resizable-handle 为官方稳定 DOM 标记）。
+    // 样式随本模块自包含注入，不落官方文件。
+    const style = document.createElement("style");
+    style.textContent = [
+      "html.zcode-phone.zcode-chat #sidebar{display:none}",
+      "html.zcode-phone.zcode-chat [data-testid='resizable-handle']{display:none}",
+    ].join("");
+    document.head.appendChild(style);
     return () => {
+      style.remove();
       root.classList.remove("zcode-phone", "zcode-chat", "zcode-list");
     };
   }, [isPhone, activeEntry]);
 
+  // iOS Safari 左缘右滑返回：进聊天页时压入一条 history，浏览器返回手势
+  // 触发 popstate 后清空 activeTaskId 回到列表页；点返回条则用 history.back()
+  // 消费掉该条目。仅手机视口启用。
+  const chatActive = activeEntry != null;
+  const pushedChatHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (!isPhone) {
+      return;
+    }
+    const onPop = () => {
+      if (pushedChatHistoryRef.current) {
+        pushedChatHistoryRef.current = false;
+        const entry = Object.entries(useZCodeSessionStore.getState().workspaces).find(
+          ([, bucket]) => bucket.activeTaskId != null,
+        );
+        if (entry) {
+          useZCodeSessionStore.getState().setActiveTaskId(entry[0], null);
+        }
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isPhone]);
+
+  useEffect(() => {
+    if (!isPhone) {
+      return;
+    }
+    if (chatActive && !pushedChatHistoryRef.current) {
+      history.pushState({ __phoneChat: true }, "");
+      pushedChatHistoryRef.current = true;
+    } else if (!chatActive && pushedChatHistoryRef.current) {
+      pushedChatHistoryRef.current = false;
+      history.back();
+    }
+  }, [isPhone, chatActive]);
+
   if (!isPhone) {
     return null;
   }
-  if (activeEntry) {
-    const [workspaceKey] = activeEntry;
-    return (
-      <button
-        type="button"
-        className="phone-back-bar"
-        onClick={() => setActiveTaskId(workspaceKey, null)}
-      >
-        ← {ZH ? "返回任务首页" : "Back to task home"}
-      </button>
-    );
-  }
+  // 首页常驻挂载：进聊天页仅 visibility 隐藏（不卸载），任务数据/订阅/展开状态
+  // 全部保留，返回首页零重新加载。
   return (
-    <div className="phone-overlay">
-      <PhoneTaskHome onOpenTask={(task) => setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity)} />
-    </div>
+    <>
+      <div className={activeEntry ? "invisible" : ""} aria-hidden={activeEntry != null}>
+        <PhoneTaskHome
+          onOpenTask={(task) => {
+            activateWorkspaceTab(task.workspacePath, task.workspaceIdentity);
+            setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity);
+          }}
+          onOpenDraft={(fact) => {
+            activateWorkspaceTab(fact.workspacePath, fact.workspaceIdentity);
+            setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity);
+          }}
+        />
+      </div>
+      {activeEntry ? (
+        <TaskHomeBackBar
+          onBack={() => {
+            const [workspaceKey] = activeEntry;
+            setActiveTaskId(workspaceKey, null);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function TaskHomeBackBar(props: { onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      className="fixed inset-x-0 top-0 flex h-10 items-center border-b border-border bg-card px-3.5 text-left text-ui-sm text-foreground"
+      style={{ zIndex: 2000000000 }}
+      onClick={props.onBack}
+    >
+      {ZH ? "← 返回任务首页" : "← Back to task home"}
+    </button>
   );
 }
