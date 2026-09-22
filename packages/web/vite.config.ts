@@ -123,6 +123,10 @@ export default defineConfig(({ mode }) => {
       __ZCODE_VERSION__: JSON.stringify(version),
       __ZCODE_COMMIT__: JSON.stringify(env.ZCODE_COMMIT || "unknown"),
       __ZCODE_ENV__: JSON.stringify(zcodeEnv),
+      // 手机远控壳（src/phone）需要读取应用真实 tab store 才能按官方流程激活
+      // workspace tab 再打开任务；官方 E2E 桥正是把 store 挂到 window 的现成开关。
+      // 仅同源脚本可读，暴露面等同应用自身。
+      "import.meta.env.VITE_ZCODE_E2E_STORE_BRIDGE": JSON.stringify("1"),
       "import.meta.env.VITE_ZCODE_BASE_URL": JSON.stringify(zcodeEndpointOrigin),
       // 兼容旧 Web runtime 读取名；新代码统一读 VITE_ZCODE_BASE_URL。
       "import.meta.env.VITE_ZCODE_ENDPOINT_ORIGIN": JSON.stringify(zcodeEndpointOrigin),

@@ -192,6 +192,43 @@ function basename(path: string): string {
 
 type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
 
+/** 官方 E2E 桥暴露的应用真实 tab store（见 vite.config.ts define；仅手机 web 构建）。 */
+declare global {
+  interface Window {
+    __zcodeTabStoreE2E?: {
+      getState(): {
+        activateTabByPath(
+          workspacePath: string,
+          options?: { workspaceIdentity?: string },
+        ): boolean;
+      };
+    };
+  }
+}
+
+/**
+ * 打开任务/草稿前先按官方流程激活目标 workspace 的 tab：
+ * 聊天区只渲染当前激活 tab 的工作区投影，跳过激活会显示成别的
+ * 工作区的新对话（真机已复现）。桥未就绪时退化为仅 setActiveTaskId。
+ */
+function activateWorkspaceTab(
+  workspacePath: string,
+  workspaceIdentity?: string,
+): void {
+  const store = window.__zcodeTabStoreE2E;
+  if (!store) {
+    return;
+  }
+  try {
+    store.getState().activateTabByPath(
+      workspacePath,
+      workspaceIdentity ? { workspaceIdentity } : undefined,
+    );
+  } catch {
+    // 激活失败不阻断：维持旧行为
+  }
+}
+
 function statusMeta(status?: string): { label: string; cls: string } {
   if (status === "running") {
     return { label: ZH ? "运行中" : "running", cls: "text-success" };
@@ -437,14 +474,16 @@ export function PhoneShell() {
   // 全部保留，返回首页零重新加载。
   return (
     <>
-      <div className={activeEntry ? "invisible" : ""} aria-hidden={activeEntry || undefined}>
+      <div className={activeEntry ? "invisible" : ""} aria-hidden={activeEntry != null}>
         <PhoneTaskHome
-          onOpenTask={(task) =>
-            setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity)
-          }
-          onOpenDraft={(fact) =>
-            setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity)
-          }
+          onOpenTask={(task) => {
+            activateWorkspaceTab(task.workspacePath, task.workspaceIdentity);
+            setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity);
+          }}
+          onOpenDraft={(fact) => {
+            activateWorkspaceTab(fact.workspacePath, fact.workspaceIdentity);
+            setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity);
+          }}
         />
       </div>
       {activeEntry ? (
