@@ -177,7 +177,7 @@ function isInsideDirectory(root: string, candidate: string): boolean {
 async function resolveStaticFile(
   staticRoot: string,
   pathname: string,
-): Promise<{ filePath: string; spa: boolean } | null> {
+): Promise<{ filePath: string; noCache: boolean } | null> {
   const root = resolve(staticRoot);
   const normalizedPathname = pathname === "/" ? "/index.html" : pathname;
   const relativePath = decodeURIComponent(normalizedPathname).replace(/^\/+/, "");
@@ -185,10 +185,13 @@ async function resolveStaticFile(
   if (!isInsideDirectory(root, candidate)) {
     return null;
   }
+  // index.html（无论直链还是 SPA fallback）都是 no-cache 语义：重建产物后必须
+  // 立即反映新哈希资产清单，gzip/HTTP 缓存都不能复用旧副本。
+  const isIndexFile = candidate === resolve(root, "index.html");
   try {
     const candidateStat = await stat(candidate);
     if (candidateStat.isFile()) {
-      return { filePath: candidate, spa: false };
+      return { filePath: candidate, noCache: isIndexFile };
     }
   } catch {
     // 未命中继续 SPA fallback
@@ -197,7 +200,7 @@ async function resolveStaticFile(
   try {
     const indexStat = await stat(indexFile);
     if (indexStat.isFile()) {
-      return { filePath: indexFile, spa: true };
+      return { filePath: indexFile, noCache: true };
     }
   } catch {
     return null;
@@ -569,26 +572,24 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
           STATIC_MIME_TYPES[extname(staticEntry.filePath).toLowerCase()] ??
           "application/octet-stream";
         const headers: Record<string, string> = {
-          "Cache-Control": staticEntry.spa
+          "Cache-Control": staticEntry.noCache
             ? "no-cache"
             : "public, max-age=31536000, immutable",
           "Content-Type": contentType,
         };
-        // vite 产物文件名带哈希、内容不可变，压缩结果按路径缓存一次即可。
+        // 只有带哈希的不可变资产可缓存压缩结果；index.html 每次都重新压缩。
         const acceptsGzip = (req.headers["accept-encoding"] ?? "").includes("gzip");
         const compressible =
           acceptsGzip && GZIP_MIME_TYPES.has(contentType.split(";")[0]!.trim());
         let body: Buffer = file;
         if (compressible) {
-          // 只有带哈希的不可变资产可缓存；index.html（spa 语义 no-cache）
-          // 每次都要反映最新构建，压缩结果不能复用，否则重建产物后永远发旧 HTML。
-          const cached = staticEntry.spa ? undefined : gzipCache.get(staticEntry.filePath);
+          const cached = staticEntry.noCache ? undefined : gzipCache.get(staticEntry.filePath);
           if (cached) {
             body = cached;
           } else {
             const started = Date.now();
             body = gzipSync(file, { level: 6 });
-            if (!staticEntry.spa) {
+            if (!staticEntry.noCache) {
               gzipCache.set(staticEntry.filePath, body);
             }
             logger.info("[phone-remote] gzip prepared", {
