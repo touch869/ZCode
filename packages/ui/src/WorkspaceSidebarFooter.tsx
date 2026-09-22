@@ -34,6 +34,7 @@ import {
   Maximize,
   Palette,
   Settings,
+  Smartphone,
   User,
   ZoomIn,
   ZoomOut,
@@ -369,6 +370,24 @@ export const WorkspaceSidebarFooter = memo(function WorkspaceSidebarFooterCompon
           </DropdownMenuContent>
         </DropdownMenu>
         <div className="flex shrink-0 items-center gap-1.5">
+          {/* 手机远控：对齐官方端形态，入口放在用户名与设置之间。面板由 main
+              进程内嵌服务器托管，Web 平台 executeDesktopCommand 为 no-op，故仅 Desktop 渲染。 */}
+          {isDesktop ? (
+            <ControlHintTooltip title={intl.formatMessage({ id: "sidebar.phoneRemote" })}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                data-testid="sidebar-phone-remote-button"
+                aria-label={intl.formatMessage({ id: "sidebar.phoneRemote" })}
+                onClick={() =>
+                  void platform.executeDesktopCommand(DesktopCommandIds.OpenPhoneRemotePanel)
+                }
+              >
+                <Smartphone className="size-4" />
+              </Button>
+            </ControlHintTooltip>
+          ) : null}
           <ControlHintTooltip title={settingsButtonLabel}>
             <Button
               type="button"

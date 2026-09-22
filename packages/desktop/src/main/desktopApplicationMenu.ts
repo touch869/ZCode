@@ -91,6 +91,8 @@ function buildApplicationMenuTemplate(options: {
   shortcutBindings?: Record<string, string[]>;
   /** 快捷键设置页录制态：true 时摘掉全部可配置 accelerator */
   disableShortcutAccelerators?: boolean;
+  /** 打开手机远控面板（main 进程内嵌服务器托管）；未注入时不显示菜单项。 */
+  openPhoneRemotePanel?: () => void;
 }): Electron.MenuItemConstructorOptions[] {
   const getLabel = (id: (typeof desktopMenuMessageIds)[keyof typeof desktopMenuMessageIds]) =>
     getDesktopMenuLabel(options.currentApplicationLocale, id);
@@ -168,6 +170,16 @@ function buildApplicationMenuTemplate(options: {
           accelerator: resolveMenuAccelerator(options, "openWorkspace", "CmdOrCtrl+O"),
           click: () => void options.executeDesktopCommand(DesktopCommandIds.OpenWorkspace),
         },
+        // 手机远控面板由 main 进程内嵌服务器托管（打开 BrowserWindow 加载 /panel），
+        // 不走 renderer 命令通道，避免为纯 main 能力扩 DesktopCommandIds。
+        ...(options.openPhoneRemotePanel
+          ? [
+              {
+                label: getLabel(desktopMenuMessageIds.filePhoneRemote),
+                click: () => options.openPhoneRemotePanel?.(),
+              },
+            ]
+          : []),
         { type: "separator" as const },
         {
           label: getLabel(desktopMenuMessageIds.fileCloseWindow),
@@ -362,6 +374,8 @@ export function rebuildApplicationMenu(options: {
   shortcutBindings?: Record<string, string[]>;
   /** 快捷键设置页录制态：true 时摘掉全部可配置 accelerator */
   disableShortcutAccelerators?: boolean;
+  /** 打开手机远控面板（main 进程内嵌服务器托管）；未注入时不显示菜单项。 */
+  openPhoneRemotePanel?: () => void;
 }) {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
@@ -372,6 +386,7 @@ export function rebuildApplicationMenu(options: {
         currentZoomLevel: options.currentZoomLevel,
         shortcutBindings: options.shortcutBindings,
         disableShortcutAccelerators: options.disableShortcutAccelerators,
+        openPhoneRemotePanel: options.openPhoneRemotePanel,
       }),
     ),
   );
