@@ -1859,6 +1859,7 @@ const zhCN: Record<string, string> = {
   "settings.locale.system": "系统默认",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",
+  "sidebar.phoneRemote": "手机远控",
   "sidebar.settings.systemDefault": "系统默认",
   "sidebar.settings.locale.en-US": "English",
   "sidebar.settings.locale.zh-CN": "中文简体",

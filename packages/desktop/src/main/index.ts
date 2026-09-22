@@ -68,6 +68,7 @@ import {
   resolveZCodeEndpointOrigin,
   type UpdateStatePayload,
   HostMessageTypes,
+  DesktopCommandIds,
 } from "@zcode/shared";
 import { logger } from "./logger.js";
 import { markMainLaunchAppReady } from "./desktopLaunchMarks.js";
@@ -1274,6 +1275,11 @@ async function executeDesktopCommandForApp(
   command: Parameters<typeof executeDesktopCommand>[0]["command"],
   senderWindow?: BrowserWindow | null,
 ) {
+  // 手机远控面板只存在于 main 进程（内嵌服务器托管），无需进通用命令分发器。
+  if (command === DesktopCommandIds.OpenPhoneRemotePanel) {
+    phoneRemoteServer?.openPanelWindow();
+    return;
+  }
   return executeDesktopCommand({
     fetchHelpConfig: readHelpConfig,
     command,
