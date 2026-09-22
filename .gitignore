@@ -72,3 +72,4 @@ packages/desktop/.e2e-network-capture/
 .tsup.stamp
 packages/desktop/.tsup.stamp
 packages/web/.web.stamp
+out-bak/
