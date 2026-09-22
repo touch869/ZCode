@@ -44,7 +44,7 @@ import {
 } from "electron";
 import type { UtilityProcess as ElectronUtilityProcess } from "electron";
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { homedir } from "node:os";
 import {
   createSettingService,
@@ -108,6 +108,7 @@ import {
   resolveSystemApplicationLocale,
   updateZCodeStdioTapDevMenuState,
 } from "./desktopApplicationMenu.js";
+import { createPhoneRemoteServer } from "./phoneRemote/server.js";
 import { applyAppIcon } from "./desktopWindowChrome.js";
 // 以下 import 在遥测移除（P1）时被连带删除，但符号在别处仍被使用，必须保留：
 //   - resolveWindowsAppUserModelIdForFlavor：Windows AUMID（:1770），快捷方式/开始菜单身份
@@ -613,6 +614,43 @@ function resolveCronDispatchHost(): ElectronUtilityProcess | null {
   const first = windowHostProcessMap.values().next();
   return first.done ? null : first.value;
 }
+// 手机远控：优先挂到最近聚焦窗口的 host（与用户正在看的会话一致），退而求其次任一存活 host。
+let lastFocusedWindowWebContentsId: number | null = null;
+function resolvePhoneRemoteTargetHost(): ElectronUtilityProcess | null {
+  const byFocus =
+    lastFocusedWindowWebContentsId !== null
+      ? windowHostProcessMap.get(lastFocusedWindowWebContentsId)
+      : undefined;
+  if (byFocus && byFocus.pid !== undefined) {
+    return byFocus;
+  }
+  for (const child of windowHostProcessMap.values()) {
+    if (child.pid !== undefined) {
+      return child;
+    }
+  }
+  return null;
+}
+function resolvePhoneRemoteWorkspaces() {
+  const orderedPaths: string[] = [];
+  const focusedPaths =
+    lastFocusedWindowWebContentsId !== null
+      ? windowWorkspaceMap.get(lastFocusedWindowWebContentsId)
+      : undefined;
+  for (const path of focusedPaths ?? []) {
+    orderedPaths.push(path);
+  }
+  for (const paths of windowWorkspaceMap.values()) {
+    for (const path of paths) {
+      if (!orderedPaths.includes(path)) {
+        orderedPaths.push(path);
+      }
+    }
+  }
+  return orderedPaths.map((path) => ({ path, label: basename(path) || path }));
+}
+// 手机远控服务器句柄；app ready 后创建并启动（loopback 常驻，外部监听随开关）。
+let phoneRemoteServer: ReturnType<typeof createPhoneRemoteServer> | null = null;
 const disposingHostProcessTimers = new WeakMap<
   ElectronUtilityProcess,
   ReturnType<typeof setTimeout>
@@ -682,6 +720,7 @@ function awaitFirstHostSpawnDecision(): Promise<void> {
 // 与 syncAppTelemetryInteractiveState。整套业务事件上报链路已删除，不再需要 credential service。
 
 app.on("browser-window-focus", (_event, win) => {
+  lastFocusedWindowWebContentsId = win.isDestroyed() ? null : win.webContents.id;
   rebuildMenu();
   // 设置/更新等无 Host 的 ZCode 窗口也算前台：router 会先把旧 workspace Host 清成 null，
   // 再把无 Host 的新窗口事实静默丢弃，避免旧会话 PiP 继续显示。
@@ -916,6 +955,10 @@ async function prepareAppQuit(reason: string, kind: AppShutdownKind = "normal"):
   // 只剩本地内存诊断日志需要收口——它不再需要「排空未满窗口」语义。
   mainMemoryDiagnosticsLog?.stop();
   mainMemoryDiagnosticsLog = null;
+  // 手机远控服务器随退出屏障一并关闭，断开手机 WS 并释放监听端口。
+  const phoneRemoteServerToStop = phoneRemoteServer;
+  phoneRemoteServer = null;
+  void phoneRemoteServerToStop?.stop();
 
   const cronSchedulerToDispose = cronScheduler;
   cronScheduler = null;
@@ -1316,6 +1359,7 @@ function rebuildMenu() {
         // 快捷键录制态：摘掉可配置 accelerator，防止录制 menu 通道命令时按键直接触发原命令
         // （macOS 系统菜单先于 renderer 吃掉按键，renderer 侧 preventDefault 拦不住）。
         disableShortcutAccelerators: shortcutRecordingActive,
+        openPhoneRemotePanel: () => phoneRemoteServer?.openPanelWindow(),
       });
     },
   );
@@ -1760,6 +1804,19 @@ app.whenReady().then(async () => {
     reconcileKeepAwakeBlocker();
   } catch {
     // 读取失败不影响启动，使用默认 homedir
+  }
+
+  // 手机远控：loopback 常驻（面板/本机调试），Tailscale 网段外部监听随 enabled 开关。
+  phoneRemoteServer = createPhoneRemoteServer({
+    logger,
+    resolveTargetHost: resolvePhoneRemoteTargetHost,
+    getWorkspaces: resolvePhoneRemoteWorkspaces,
+  });
+  try {
+    await phoneRemoteServer.start();
+  } catch (error) {
+    logger.error("[phone-remote] server failed to start:", error);
+    phoneRemoteServer = null;
   }
 
   // scheduler 也会打开 tasks-index；等 Host 完成统一准备，避免在启动页出现前抢先迁移。
