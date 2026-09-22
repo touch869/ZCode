@@ -14,7 +14,7 @@
  * 增量导出的既有模块与 @zcode/shared 协议常量。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Cloud, Folder, Plus } from "lucide-react";
+import { Check, ChevronRight, Cloud, Folder, Plus, Zap } from "lucide-react";
 import {
   useGlobalTaskList,
   useServices,
@@ -229,14 +229,30 @@ function activateWorkspaceTab(
   }
 }
 
-function statusMeta(status?: string): { label: string; cls: string } {
+/** 官方形态的状态胶囊：运行中=浅底闪电，已完成=绿底白字对勾，出错=红底白字。 */
+function StatusPill({ status }: { status?: string }) {
   if (status === "running") {
-    return { label: ZH ? "运行中" : "running", cls: "text-success" };
+    return (
+      <span className="flex flex-none items-center gap-1 rounded-full border border-border bg-surface-hover px-2.5 py-1 text-ui-xs text-foreground">
+        <Zap className="size-3" />
+        {ZH ? "运行中" : "running"}
+      </span>
+    );
   }
   if (status === "error") {
-    return { label: ZH ? "出错" : "error", cls: "text-destructive" };
+    return (
+      <span className="flex flex-none items-center gap-1 rounded-full bg-destructive px-2.5 py-1 text-ui-xs text-white">
+        <Check className="size-3" />
+        {ZH ? "出错" : "error"}
+      </span>
+    );
   }
-  return { label: ZH ? "已完成" : "done", cls: "text-foreground-subtle" };
+  return (
+    <span className="flex flex-none items-center gap-1 rounded-full bg-success px-2.5 py-1 text-ui-xs text-white">
+      <Check className="size-3" />
+      {ZH ? "已完成" : "done"}
+    </span>
+  );
 }
 
 function PhoneTaskHome(props: {
@@ -399,27 +415,30 @@ function PhoneTaskHome(props: {
             ) : null}
             {expanded && tasks.length > 0 ? (
               <ul className="px-1.5 pb-2">
-                {tasks.map((task) => {
-                  const status = statusMeta(task.status);
-                  return (
-                    <li key={task.taskId}>
-                      <button
-                        type="button"
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-ui-sm hover:bg-surface-hover"
-                        onClick={() => props.onOpenTask(task)}
-                      >
-                        {task.unreadAt ? (
-                          <span className="size-2 flex-none rounded-full bg-[#4f8ef7]" />
-                        ) : null}
-                        <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                        <span className={`flex-none text-ui-xs ${status.cls}`}>{status.label}</span>
-                        <span className="flex-none text-ui-xs text-foreground-subtle">
+                {tasks.map((task) => (
+                  <li key={task.taskId}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-3 text-left hover:bg-surface-hover"
+                      onClick={() => props.onOpenTask(task)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          {task.unreadAt ? (
+                            <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
+                          ) : null}
+                          <span className="min-w-0 flex-1 truncate text-ui-base">
+                            {task.title}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
                           {formatRelativeTime(task.updatedAt)}
                         </span>
-                      </button>
-                    </li>
-                  );
-                })}
+                      </span>
+                      <StatusPill status={task.status} />
+                    </button>
+                  </li>
+                ))}
               </ul>
             ) : null}
           </section>
