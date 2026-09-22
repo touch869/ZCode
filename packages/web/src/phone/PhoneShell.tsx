@@ -433,27 +433,41 @@ export function PhoneShell() {
   if (!isPhone) {
     return null;
   }
-  if (activeEntry) {
-    const [workspaceKey] = activeEntry;
-    return (
-      <button
-        type="button"
-        className="fixed inset-x-0 top-0 flex h-10 items-center border-b border-border bg-card px-3.5 text-left text-sm text-foreground"
-        style={{ zIndex: 2000000000 }}
-        onClick={() => setActiveTaskId(workspaceKey, null)}
-      >
-        ← {ZH ? "返回任务首页" : "Back to task home"}
-      </button>
-    );
-  }
+  // 首页常驻挂载：进聊天页仅 visibility 隐藏（不卸载），任务数据/订阅/展开状态
+  // 全部保留，返回首页零重新加载。
   return (
-    <div>
-      <PhoneTaskHome
-        onOpenTask={(task) =>
-          setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity)
-        }
-        onOpenDraft={(fact) => setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity)}
-      />
-    </div>
+    <>
+      <div className={activeEntry ? "invisible" : ""} aria-hidden={activeEntry || undefined}>
+        <PhoneTaskHome
+          onOpenTask={(task) =>
+            setActiveTaskId(task.workspacePath, task.taskId, task.workspaceIdentity)
+          }
+          onOpenDraft={(fact) =>
+            setActiveTaskId(fact.workspacePath, null, fact.workspaceIdentity)
+          }
+        />
+      </div>
+      {activeEntry ? (
+        <TaskHomeBackBar
+          onBack={() => {
+            const [workspaceKey] = activeEntry;
+            setActiveTaskId(workspaceKey, null);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function TaskHomeBackBar(props: { onBack: () => void }) {
+  return (
+    <button
+      type="button"
+      className="fixed inset-x-0 top-0 flex h-10 items-center border-b border-border bg-card px-3.5 text-left text-sm text-foreground"
+      style={{ zIndex: 2000000000 }}
+      onClick={props.onBack}
+    >
+      {ZH ? "← 返回任务首页" : "← Back to task home"}
+    </button>
   );
 }
