@@ -286,19 +286,19 @@ function PhoneTaskHome(props: {
       className="fixed inset-0 overflow-y-auto bg-background px-4 text-foreground"
       style={{ zIndex: 2000000000, paddingTop: 18, paddingBottom: 24 }}
     >
-      <h1 className="text-xl font-semibold">{ZH ? "ZCode 远程控制" : "ZCode Remote Control"}</h1>
-      <p className="mt-1 text-[13px] text-foreground-subtle">
+      <h1 className="text-ui-xl font-semibold">{ZH ? "ZCode 远程控制" : "ZCode Remote Control"}</h1>
+      <p className="mt-1 text-ui-base text-foreground-subtle">
         {ZH ? "已连接到当前桌面窗口" : "Connected to the current desktop window"}
       </p>
-      <div className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-[13px] leading-relaxed text-foreground-subtle">
+      <div className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-ui-sm leading-relaxed text-foreground-subtle">
         {ZH
           ? "本次连接可以查看当前设备上已打开的项目、任务和会话；二维码失效后需要回到桌面端重新连接。"
           : "This connection shows the projects, tasks and sessions currently open on this device; the QR code expires and requires re-pairing from the desktop app."}
       </div>
-      <h2 className="mt-6 text-[15px] font-semibold">
+      <h2 className="mt-6 text-ui-base font-semibold">
         {ZH ? "当前设备上的工作区和任务" : "Workspaces & tasks"}
       </h2>
-      <p className="mt-0.5 text-[13px] text-foreground-subtle">
+      <p className="mt-0.5 text-ui-sm text-foreground-subtle">
         {ZH
           ? `${workspaces.length} 个工作区 · ${items.length} 个任务`
           : `${workspaces.length} workspaces · ${items.length} tasks`}
@@ -340,10 +340,10 @@ function PhoneTaskHome(props: {
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
-                  <span className="truncate text-[17px] font-semibold leading-6">
+                  <span className="truncate text-ui-lg font-semibold leading-6">
                     {basename(key)}
                   </span>
-                  <span className="flex-none rounded-full border border-border px-2 py-px text-xs text-foreground-subtle">
+                  <span className="flex-none rounded-full border border-border px-2 py-px text-ui-xs text-foreground-subtle">
                     {fact.sourceAvailability === "offline"
                       ? ZH
                         ? "离线"
@@ -357,7 +357,7 @@ function PhoneTaskHome(props: {
                           : "local"}
                   </span>
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-foreground-subtle">
+                <span className="mt-0.5 flex items-center gap-1.5 text-ui-sm text-foreground-subtle">
                   <span className="min-w-0 truncate font-mono">{fact.workspacePath}</span>
                   {hasUnread ? (
                     <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
@@ -369,7 +369,7 @@ function PhoneTaskHome(props: {
                     }`}
                   />
                 </span>
-                <span className="mt-0.5 block text-[13px] text-foreground-subtle">
+                <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
                   {latest > 0
                     ? ZH
                       ? `更新于 ${formatRelativeTime(latest)}`
@@ -405,15 +405,15 @@ function PhoneTaskHome(props: {
                     <li key={task.taskId}>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-sm hover:bg-surface-hover"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-ui-sm hover:bg-surface-hover"
                         onClick={() => props.onOpenTask(task)}
                       >
                         {task.unreadAt ? (
                           <span className="size-2 flex-none rounded-full bg-[#4f8ef7]" />
                         ) : null}
                         <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                        <span className={`flex-none text-xs ${status.cls}`}>{status.label}</span>
-                        <span className="flex-none text-xs text-foreground-subtle">
+                        <span className={`flex-none text-ui-xs ${status.cls}`}>{status.label}</span>
+                        <span className="flex-none text-ui-xs text-foreground-subtle">
                           {formatRelativeTime(task.updatedAt)}
                         </span>
                       </button>
@@ -426,12 +426,12 @@ function PhoneTaskHome(props: {
         );
       })}
       {loading && items.length === 0 ? (
-        <p className="mt-10 text-center text-[13px] text-foreground-subtle">
+        <p className="mt-10 text-center text-ui-sm text-foreground-subtle">
           {ZH ? "正在获取任务…" : "Loading tasks…"}
         </p>
       ) : null}
       {!loading && orderedKeys.length === 0 ? (
-        <p className="mt-10 text-center text-[13px] text-foreground-subtle">
+        <p className="mt-10 text-center text-ui-sm text-foreground-subtle">
           {ZH ? "暂无工作区" : "No workspaces yet"}
         </p>
       ) : null}
@@ -466,6 +466,44 @@ export function PhoneShell() {
       root.classList.remove("zcode-phone", "zcode-chat", "zcode-list");
     };
   }, [isPhone, activeEntry]);
+
+  // iOS Safari 左缘右滑返回：进聊天页时压入一条 history，浏览器返回手势
+  // 触发 popstate 后清空 activeTaskId 回到列表页；点返回条则用 history.back()
+  // 消费掉该条目。仅手机视口启用。
+  const chatActive = activeEntry != null;
+  const pushedChatHistoryRef = useRef(false);
+
+  useEffect(() => {
+    if (!isPhone) {
+      return;
+    }
+    const onPop = () => {
+      if (pushedChatHistoryRef.current) {
+        pushedChatHistoryRef.current = false;
+        const entry = Object.entries(useZCodeSessionStore.getState().workspaces).find(
+          ([, bucket]) => bucket.activeTaskId != null,
+        );
+        if (entry) {
+          useZCodeSessionStore.getState().setActiveTaskId(entry[0], null);
+        }
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [isPhone]);
+
+  useEffect(() => {
+    if (!isPhone) {
+      return;
+    }
+    if (chatActive && !pushedChatHistoryRef.current) {
+      history.pushState({ __phoneChat: true }, "");
+      pushedChatHistoryRef.current = true;
+    } else if (!chatActive && pushedChatHistoryRef.current) {
+      pushedChatHistoryRef.current = false;
+      history.back();
+    }
+  }, [isPhone, chatActive]);
 
   if (!isPhone) {
     return null;
@@ -502,7 +540,7 @@ function TaskHomeBackBar(props: { onBack: () => void }) {
   return (
     <button
       type="button"
-      className="fixed inset-x-0 top-0 flex h-10 items-center border-b border-border bg-card px-3.5 text-left text-sm text-foreground"
+      className="fixed inset-x-0 top-0 flex h-10 items-center border-b border-border bg-card px-3.5 text-left text-ui-sm text-foreground"
       style={{ zIndex: 2000000000 }}
       onClick={props.onBack}
     >
