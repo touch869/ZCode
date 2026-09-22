@@ -59,6 +59,14 @@ export function createDesktopProductionBuildPlan({ cwd, baseEnv = process.env })
           cwd,
           env,
         },
+        {
+          // 手机远控静态页：packages/web 构建产物由 electron-builder extraResources
+          // 打进 resources/web-dist，主进程 phoneRemote 按 process.resourcesPath 解析。
+          command: "pnpm",
+          args: ["exec", "vite", "build"],
+          cwd: resolve(cwd, "../web"),
+          env,
+        },
       ],
     },
   ];
