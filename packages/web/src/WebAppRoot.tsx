@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connectViaWebSocket } from "@zcode/client";
-import { AppErrorBoundary, Root, ZCodeIntlProvider } from "@zcode/ui";
+import { AppErrorBoundary, Root, ServiceProvider, ZCodeIntlProvider } from "@zcode/ui";
 import type { IPlatformService } from "@zcode/shared";
 import { ConnectionStatusOverlay } from "./ConnectionStatusOverlay.js";
+import { PhoneShell } from "./phone/PhoneShell.js";
 import { createConnectionSupervisor, type ConnectionPhase } from "./connectionRecovery.js";
 import { createAuthorizationProbeController } from "./authorizationProbeController.js";
 import { classifyServerInfoProbe } from "./authProbe.js";
@@ -159,6 +160,13 @@ export function WebAppRoot({
           授权问题必须显式、且不得继续展示会话内容。见 docs/development/web-remote-control.md。 */}
       {session && !unauthorized ? (
         <AppErrorBoundary key={session.generation}>
+          {/* 手机远控壳：独立增量层（列表页 overlay + 聊天页返回条），仅 <768px 视口激活，
+              官方 Root 原树不感知（详见 src/phone/PhoneShell.tsx 头注）。
+              ServiceProvider 供手机壳的官方数据 hooks 读取（与 Root 内部同源 services）；
+              放在 AppErrorBoundary 内，与 Root 同代重挂载（key={session.generation}）。 */}
+          <ServiceProvider key={session.generation} services={session.services}>
+            <PhoneShell />
+          </ServiceProvider>
           <ZCodeIntlProvider
             settingService={session.services.settingService}
             broadcastService={session.services.broadcastService}
