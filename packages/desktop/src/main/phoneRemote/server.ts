@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { gzipSync } from "node:zlib";
 import { randomUUID } from "node:crypto";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { networkInterfaces, hostname } from "node:os";
@@ -147,6 +148,7 @@ const STATIC_MIME_TYPES: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
+  ".md": "text/plain; charset=utf-8",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
@@ -155,6 +157,17 @@ const STATIC_MIME_TYPES: Record<string, string> = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
+
+/** 可 gzip 的文本类型：手机端常走 Tailscale DERP 中继（高 RTT 低带宽），
+ * 文本资产压缩后体积约 1/3~1/4，是慢链路下最大的单点提速。 */
+const GZIP_MIME_TYPES = new Set([
+  "text/javascript",
+  "text/css",
+  "text/html",
+  "text/plain",
+  "application/json",
+  "image/svg+xml",
+]);
 
 function isInsideDirectory(root: string, candidate: string): boolean {
   const diff = relative(root, candidate);
@@ -244,6 +257,8 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
   let panelWindow: BrowserWindow | null = null;
   const activeConnections = new Set<{ connectedAt: number }>();
   const wss = new WebSocketServer({ noServer: true });
+  // dist 内哈希资产不可变：gzip 结果按路径缓存，避免每个手机连接重复压缩。
+  const gzipCache = new Map<string, Buffer>();
 
   // ── 鉴权（与 packages/server http.ts 同策略）────────────────────────────
   function tokenFromRequest(url: URL, req: IncomingMessage): string | null {
@@ -499,15 +514,45 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
       const staticEntry = await resolveStaticFile(webDistDir, url.pathname);
       if (staticEntry) {
         const file = await readFile(staticEntry.filePath);
-        res.writeHead(200, {
+        const contentType =
+          STATIC_MIME_TYPES[extname(staticEntry.filePath).toLowerCase()] ??
+          "application/octet-stream";
+        const headers: Record<string, string> = {
           "Cache-Control": staticEntry.spa
             ? "no-cache"
             : "public, max-age=31536000, immutable",
-          "Content-Type":
-            STATIC_MIME_TYPES[extname(staticEntry.filePath).toLowerCase()] ??
-            "application/octet-stream",
+          "Content-Type": contentType,
+        };
+        // vite 产物文件名带哈希、内容不可变，压缩结果按路径缓存一次即可。
+        const acceptsGzip = (req.headers["accept-encoding"] ?? "").includes("gzip");
+        const compressible =
+          acceptsGzip && GZIP_MIME_TYPES.has(contentType.split(";")[0]!.trim());
+        let body: Buffer = file;
+        if (compressible) {
+          const cached = gzipCache.get(staticEntry.filePath);
+          if (cached) {
+            body = cached;
+          } else {
+            const started = Date.now();
+            body = gzipSync(file, { level: 6 });
+            gzipCache.set(staticEntry.filePath, body);
+            logger.info("[phone-remote] gzip prepared", {
+              file: basename(staticEntry.filePath),
+              raw: file.byteLength,
+              gzipped: body.byteLength,
+              ms: Date.now() - started,
+            });
+          }
+          headers["Content-Encoding"] = "gzip";
+          headers["Vary"] = "Accept-Encoding";
+        }
+        res.writeHead(200, headers);
+        res.end(body);
+        logger.info("[phone-remote] static served", {
+          path: url.pathname,
+          bytes: body.byteLength,
+          encoding: compressible ? "gzip" : "identity",
         });
-        res.end(file);
         return;
       }
     }
