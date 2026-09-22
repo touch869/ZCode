@@ -24,10 +24,6 @@ import {
 import type { MainToSchedulerMessage, SchedulerToMainMessage } from "./schedulerProtocol.js";
 import { settleManualClaimForDispatchResult } from "./manualClaimRelease.js";
 import { settleOffPeakDispatchResult } from "./offPeakDispatchSettlement.js";
-import {
-  startSchedulerResourceTelemetry,
-  type SchedulerResourceTelemetry,
-} from "./schedulerResourceTelemetry.js";
 
 /** 轮询间隔：cron 最小粒度是分钟，20s 轮询足以按时命中且开销低。 */
 const POLL_INTERVAL_MS = 20_000;
@@ -62,8 +58,6 @@ let tickRequested = false;
 let schedulerReady = false;
 let disposed = false;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
-/** 资源遥测：本进程唯一的自采定时器。 */
-let resourceTelemetry: SchedulerResourceTelemetry | null = null;
 
 function log(level: "info" | "warn" | "error", message: string): void {
   const msg: SchedulerToMainMessage = { type: "scheduler-log", level, message };
@@ -243,13 +237,22 @@ async function handleOffPeakClaimed(task: ZCodeOffPeakTask, now: number): Promis
     await offPeakRepo.releaseClaim(task.offPeakTaskId, { now });
     return;
   }
+  // claimDue 已按 readOffPeakModelSelection 逐行过滤：缺 Provider 身份的历史行不会被认领。
+  // 类型上 modelSelection 仍是可选，这里显式收窄，不放宽 schedulerProtocol 的必填约定
+  // （main→host 的 OffPeakRun 同样要求完整 Selection）。真出现空值时释放认领、留在队列等修复。
+  const modelSelection = task.modelSelection;
+  if (!modelSelection) {
+    await offPeakRepo.releaseClaim(task.offPeakTaskId, { now });
+    log("warn", `off-peak task ${task.offPeakTaskId} has no model selection; dispatch skipped`);
+    return;
+  }
   offPeakInFlight.add(task.offPeakTaskId);
   const request: SchedulerToMainMessage = {
     type: "offpeak-dispatch-request",
     offPeakTaskId: task.offPeakTaskId,
     prompt: task.prompt,
     permissionMode: task.permissionMode,
-    modelSelection: task.modelSelection,
+    modelSelection,
     ...(task.conversationId ? { conversationId: task.conversationId } : {}),
     ...(task.sessionId ? { sessionId: task.sessionId } : {}),
     ...(task.serverTicketId ? { serverTicketId: task.serverTicketId } : {}),
@@ -329,8 +332,6 @@ async function dispose(): Promise<void> {
   disposed = true;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
-  resourceTelemetry?.stop();
-  resourceTelemetry = null;
   // 释放本进程仍在途的认领，避免下次启动等到 CLAIM_STALE 才回收。
   for (const [, context] of inFlight) {
     try {
@@ -431,10 +432,8 @@ async function main(): Promise<void> {
   log("info", "cron scheduler started");
   requestTick();
   pollTimer = setInterval(requestTick, POLL_INTERVAL_MS);
-  // 资源遥测：60 秒自采一次 CPU / 内存发给 main（heap 只有本进程读得到）。
-  resourceTelemetry = startSchedulerResourceTelemetry({
-    postMessage: (message) => parentPort?.postMessage(message),
-  });
+  // 遥测移除（P1）：这里原有 startSchedulerResourceTelemetry（60 秒自采 CPU / 内存 → main
+  // → ARMS scheduler 角色事件）。scheduler 进程现在不再持有任何采样定时器。
 }
 
 void main().catch((error) => {

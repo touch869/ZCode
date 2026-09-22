@@ -16,6 +16,8 @@ import { basename, dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "../../../scripts/spawn-command.mjs";
+import { stageCuaDriverIntoBundledAgents } from "./cua-driver-package-assets.mjs";
+import { stageKoffiIntoBundledAgents } from "./koffi-package-assets.mjs";
 import { stageAgentBundle } from "./stage-agent-bundle.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -88,6 +90,72 @@ const browserUseRequiredRuntimePaths = [
   "skills/control-browser/SKILL.md",
   "skills/web-gui-tester/SKILL.md",
 ];
+// Office 三个插件：纯资源包（skills/*/SKILL.md + scripts/check_office.py + agents/visual-judge.md），
+// 没有任何构建产物，所以 requiresRuntime 为 false，且**不设** runtimeBuildScript
+// —— 设了会让 buildOfficialPluginRuntimes() 去跑一个不存在的构建脚本。
+//
+// 为什么必须在这里出现：这三个插件此前完全没进任何 staging 清单，打包后
+// resources/glm/packages 下不存在对应目录，filesystem seed 的三处 candidate 全部落空，
+// 发行版用户拿不到 Office 能力（症状是「官方市场里有 Documents 插件、点进去却是空的」）。
+// 权威归属见 bootstrap/official-plugin-definitions.ts（那里早已标了 defaultEnabled: true
+// 和 requiredSeedPaths，只是没人把它反查到 staging 清单上）。
+// 单列成表而不是复制三份字面量：三份平行清单各自手写正是本次漏加的同型根因
+// （见上方常量注释里踩过的先例）；配套回归测试见 documents-plugin/test/。
+const officePluginPackages = [
+  { name: "documents", skill: "docx" },
+  { name: "presentations", skill: "pptx" },
+  { name: "spreadsheets", skill: "xlsx" },
+];
+// 纯内容型官方插件：只有 commands/skills，无 MCP server、无编译产物。
+//
+// 为什么必须有这四条：仓库早就按「它们存在」写好了装配，包却从未被搬进来 ——
+//   · slash-commands.ts 的 `/workflow` 命令取自 zcode-guide 插件；
+//   · dynamic-workflow-gate.ts 按 <插件技能根>/dynamic-workflows/SKILL.md 做灰度裁剪，
+//     即动态工作流的技能正文同样由 zcode-guide 提供；
+//   · startup-marks.ts 的注释点名 skill-creator 是 defaultEnabled 的官方插件。
+// 缺包时这些装配全部静默落空（症状：/workflow 不存在、dynamic-workflows 技能缺失）。
+// requiredSeedPaths 与 bootstrap/official-plugin-definitions.ts 的同名常量逐条一致；
+// 缺失时 stageOfficialPlugins() 抛 missing staged official plugin seed asset。
+const contentPluginPackages = [
+  {
+    name: "zcode-guide",
+    requiredSeedPaths: [
+      "commands/workflow.md",
+      "skills/dynamic-workflows/SKILL.md",
+      "skills/dynamic-workflows/examples.md",
+      "skills/dynamic-workflows/patterns.md",
+      "skills/diagnosing-commands/SKILL.md",
+      "skills/diagnosing-hooks/SKILL.md",
+      "skills/diagnosing-mcp/SKILL.md",
+      "skills/diagnosing-plugins/SKILL.md",
+      "skills/diagnosing-skills/SKILL.md",
+      "skills/zcode-configuration-guide/SKILL.md",
+    ],
+  },
+  { name: "skill-creator", requiredSeedPaths: ["skills/skill-creator/SKILL.md"] },
+  {
+    name: "plugin-creator",
+    requiredSeedPaths: [
+      "skills/plugin-creator/SKILL.md",
+      "skills/plugin-creator/scripts/create-basic-plugin.mjs",
+      "skills/plugin-creator/scripts/marketplace-files.mjs",
+      "skills/plugin-creator/scripts/upsert-dev-marketplace.mjs",
+      "skills/plugin-creator/scripts/scaffold-files.mjs",
+      "skills/plugin-creator/scripts/validate-plugin.mjs",
+      "skills/plugin-creator/references/plugin-json-spec.md",
+      "skills/plugin-creator/references/installing-and-updating.md",
+    ],
+  },
+  {
+    name: "restore-legacy-sessions",
+    requiredSeedPaths: [
+      "commands/restore-legacy-sessions.md",
+      "skills/restore-legacy-sessions/SKILL.md",
+      "skills/restore-legacy-sessions/scripts/restore-conversation.mjs",
+      "skills/restore-legacy-sessions/scripts/scan-legacy-sessions.mjs",
+    ],
+  },
+];
 const officialPluginPackages = [
   {
     // browser-use 只携带自己的 client script 与 skill/docs；node_repl MCP runtime 归
@@ -111,6 +179,45 @@ const officialPluginPackages = [
     runtimeBuildScript: "scripts/build.mjs",
     stagedPath: "packages/node-repl-host",
   },
+
+  {
+    // Computer Use 壳：官方发行包里的 MIT 资产（author Z.ai），只携带 skill/docs/SDK 三件套。
+    // 它**没有**构建产物，MCP 运行时复用宿主注入的 node_repl（见上一条）——插件 manifest
+    // 不声明 mcpServers，只把 node_repl 记在 hostMcpServerNames 上。
+    // 这三件资产此前完全没进任何 staging 清单，打包产物里因此没有 packages/zcode-cua-plugin，
+    // filesystem seed 的四个 rootCandidate 全部落空，设置页「启用电脑控制」直接报
+    // Plugin not found: computer-use@zcode-plugins-official。
+    packageName: "@zcode/zcode-cua-plugin",
+    relativePath: "apps/zcode-cli/packages/zcode-cua-plugin",
+    requiresRuntime: false,
+    // 与 bootstrap/official-plugin-definitions.ts 的 OFFICIAL_CUA_REQUIRED_SEED_PATHS 一一对应：
+    // 缺任一件时 stageOfficialPlugins() 抛 missing staged official plugin seed asset，
+    // 而不是静默产出一个没有 skill 正文的残缺插件。
+    requiredSeedPaths: [
+      "docs/computer-use.md",
+      "scripts/computer-use-client.mjs",
+      "skills/computer-use/SKILL.md",
+    ],
+    stagedPath: "packages/zcode-cua-plugin",
+  },
+
+  ...officePluginPackages.map(({ name, skill }) => ({
+    packageName: `@zcode/${name}-plugin`,
+    relativePath: `apps/zcode-cli/packages/${name}-plugin`,
+    requiresRuntime: false,
+    // 与 official-plugin-definitions.ts 的 requiredSeedPaths 一致：缺失时 stageOfficialPlugins()
+    // 直接抛错，而不是静默产出一个没有 skill 正文的残缺插件。
+    requiredSeedPaths: ["agents/visual-judge.md", `skills/${skill}/SKILL.md`],
+    stagedPath: `packages/${name}-plugin`,
+  })),
+
+  ...contentPluginPackages.map(({ name, requiredSeedPaths }) => ({
+    packageName: `@zcode/${name}-plugin`,
+    relativePath: `apps/zcode-cli/packages/${name}-plugin`,
+    requiresRuntime: false,
+    requiredSeedPaths,
+    stagedPath: `packages/${name}-plugin`,
+  })),
 ];
 const includedOfficialPluginTopLevelPaths = new Set([
   ".mcp.json",
@@ -220,6 +327,78 @@ function stageBundle() {
   stageAgentBundle({ repoRoot, platformKey });
 }
 
+/**
+ * 把 Computer Use 驱动及其平台原生依赖 stage 进 glm/node_modules。
+ *
+ * 为什么必须在 stageBundle() 之后：stageAgentBundle 会**清空并重建** glm 目录
+ * （刻意的，避免上次构建的残留原生二进制被打进包），所以 staging 顺序反了会被删掉。
+ *
+ * 为什么需要：node-repl-host 的 bundle 用运行时 import() 加载原生驱动，
+ * 而 staged 树默认没有 node_modules —— 正式包里那一跳会 ERR_MODULE_NOT_FOUND。
+ * 详见 cua-driver-package-assets.mjs 的模块注释。
+ */
+function stageCuaDriver() {
+  const { staged, triple } = stageCuaDriverIntoBundledAgents({
+    // 查找根与 electron-builder 的 runtimeModuleLookupRoots 同口径：根 node_modules
+    // 是 pnpm hoisted 布局下的主落点，desktop 自己的 node_modules 兜底。
+    lookupRoots: [repoRoot, desktopRoot],
+    glmDir,
+    // 与上面 platformKey 同源：支持 ZCODE_TARGET_OS/ARCH 交叉准备。
+    targetPlatform: {
+      os: platform,
+      arch,
+      key: platformKey,
+      npmLibc: platform === "linux" ? "glibc" : undefined,
+    },
+  });
+  const bytes = staged.reduce((sum, item) => sum + item.size, 0);
+  console.log(
+    `[prepare:agent-bundle] staged Computer Use driver (${triple}): ` +
+      `${staged.length} packages, ${(bytes / 1024 / 1024).toFixed(1)} MiB`,
+  );
+}
+
+/**
+ * 把 koffi 的原生 addon stage 进 node-repl-host/node_modules/koffi。
+ *
+ * 为什么需要：koffi 是 CLI bundle 的 external（apps/zcode-cli/packages/cli/scripts/build.mjs
+ * 的 resolveBuildExternal），因为 esbuild 无法 bundle 它按平台动态 require 的 .node。
+ * 它只被 Windows 的 Job Object 路径使用（adapters/src/mcp/windows-job-object.ts），
+ * 而安装后的 agent 没有 hoisted node_modules —— 不 stage 就永远拿不到。
+ *
+ * 现状说明（**既有缺陷，非本次引入**）：`stageKoffiIntoBundledAgents` 此前**没有任何
+ * 调用点**（koffi-package-assets.mjs 只有定义；electron-builder.config.js 只 import 了
+ * verifyStagedKoffi 也没调用）。这里补上调用点，让它真正生效。
+ * 影响面很小：koffi 只在 win32 分支加载，加载失败时 windows-job-object.ts 会
+ * return undefined 并退回 taskkill，所以此前是"功能降级"而非崩溃。
+ *
+ * 落点与 Computer Use 驱动一致（node-repl-host/node_modules）：electron-builder 会
+ * 硬编码丢弃**源根直属**的 node_modules，放 glm/node_modules 打不进包。
+ */
+function stageKoffiRuntime() {
+  try {
+    const nativePath = stageKoffiIntoBundledAgents({
+      koffiPackageRoot: repoRoot,
+      glmDir: resolve(glmDir, "packages/node-repl-host"),
+      targetPlatform: {
+        os: platform,
+        arch,
+        key: platformKey,
+        npmLibc: platform === "linux" ? "glibc" : undefined,
+      },
+    });
+    console.log(`[prepare:agent-bundle] staged koffi runtime: ${nativePath}`);
+  } catch (error) {
+    // koffi 缺失只影响 Windows 的 Job Object 清理（有 taskkill 回退），
+    // 不应该让 Linux/macOS 的打包整体失败。
+    console.warn(
+      `[prepare:agent-bundle] koffi runtime 未 stage（Windows Job Object 将退回 taskkill）：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
 function stageOfficialPlugins() {
   for (const plugin of officialPluginPackages) {
     const sourceRoot = resolve(repoRoot, plugin.relativePath);
@@ -259,4 +438,6 @@ function stageOfficialPlugins() {
 buildCliBundle();
 buildOfficialPluginRuntimes();
 stageBundle();
+stageCuaDriver();
+stageKoffiRuntime();
 stageOfficialPlugins();

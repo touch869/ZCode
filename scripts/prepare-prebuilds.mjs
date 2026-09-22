@@ -90,6 +90,59 @@ const browserUseRequiredRuntimePaths = [
   "skills/control-browser/SKILL.md",
   "skills/web-gui-tester/SKILL.md",
 ];
+// Office 三个插件：纯资源包，没有构建产物，所以 requiresRuntime 为 false，
+// 且**不设** runtimeBuildScript —— 设了会让 buildRemoteOfficialPluginRuntimes() 去跑
+// 一个不存在的构建脚本。它们此前完全没进这份清单，远端 shared-host 预构建产出的
+// glm 组件里因此没有 office 插件，远端用户同样拿不到 Office 能力。
+// 权威归属见 bootstrap/official-plugin-definitions.ts。
+const remoteOfficePluginPackages = [
+  { name: "documents", skill: "docx" },
+  { name: "presentations", skill: "pptx" },
+  { name: "spreadsheets", skill: "xlsx" },
+];
+// 纯内容型官方插件（commands/skills，无 MCP、无编译产物）：与桌面 staging 清单
+// （packages/desktop/scripts/prepare-agent-node-bundle.mjs 的 contentPluginPackages）和
+// bootstrap/official-plugin-definitions.ts 的同名 requiredSeedPaths 三处同源。
+const remoteContentPluginPackages = [
+  {
+    name: "zcode-guide",
+    requiredSeedPaths: [
+      "commands/workflow.md",
+      "skills/dynamic-workflows/SKILL.md",
+      "skills/dynamic-workflows/examples.md",
+      "skills/dynamic-workflows/patterns.md",
+      "skills/diagnosing-commands/SKILL.md",
+      "skills/diagnosing-hooks/SKILL.md",
+      "skills/diagnosing-mcp/SKILL.md",
+      "skills/diagnosing-plugins/SKILL.md",
+      "skills/diagnosing-skills/SKILL.md",
+      "skills/zcode-configuration-guide/SKILL.md",
+    ],
+  },
+  { name: "skill-creator", requiredSeedPaths: ["skills/skill-creator/SKILL.md"] },
+  {
+    name: "plugin-creator",
+    requiredSeedPaths: [
+      "skills/plugin-creator/SKILL.md",
+      "skills/plugin-creator/scripts/create-basic-plugin.mjs",
+      "skills/plugin-creator/scripts/marketplace-files.mjs",
+      "skills/plugin-creator/scripts/upsert-dev-marketplace.mjs",
+      "skills/plugin-creator/scripts/scaffold-files.mjs",
+      "skills/plugin-creator/scripts/validate-plugin.mjs",
+      "skills/plugin-creator/references/plugin-json-spec.md",
+      "skills/plugin-creator/references/installing-and-updating.md",
+    ],
+  },
+  {
+    name: "restore-legacy-sessions",
+    requiredSeedPaths: [
+      "commands/restore-legacy-sessions.md",
+      "skills/restore-legacy-sessions/SKILL.md",
+      "skills/restore-legacy-sessions/scripts/restore-conversation.mjs",
+      "skills/restore-legacy-sessions/scripts/scan-legacy-sessions.mjs",
+    ],
+  },
+];
 const remoteOfficialPluginPackages = [
   // 44b25ed46c「remove bundled plugins except browser use and cua」删掉了其余
   // 内置插件源码，但漏改这份清单，bootstrap:with-remote 在 staging 第一个 manifest 就抛
@@ -116,6 +169,21 @@ const remoteOfficialPluginPackages = [
     runtimeBuildScript: "scripts/build.mjs",
     stagedPath: "packages/node-repl-host",
   },
+
+  ...remoteOfficePluginPackages.map(({ name }) => ({
+    packageName: `@zcode/${name}-plugin`,
+    relativePath: `apps/zcode-cli/packages/${name}-plugin`,
+    requiresRuntime: false,
+    stagedPath: `packages/${name}-plugin`,
+  })),
+
+  ...remoteContentPluginPackages.map(({ name, requiredSeedPaths }) => ({
+    packageName: `@zcode/${name}-plugin`,
+    relativePath: `apps/zcode-cli/packages/${name}-plugin`,
+    requiresRuntime: false,
+    requiredSeedPaths,
+    stagedPath: `packages/${name}-plugin`,
+  })),
 ];
 const remoteOfficialPluginTopLevelPaths = new Set([
   ".mcp.json",
@@ -147,6 +215,21 @@ function shouldCopyOfficialPluginAsset(sourcePath) {
 const remoteOfficialPluginRequiredPaths = [
   "packages/browser-use-plugin/.zcode-plugin/plugin.json",
   "packages/node-repl-host/.zcode-plugin/plugin.json",
+  // office 插件同样必须出现在可复用组件的完整性清单里：只校验 browser-use/node-repl-host
+  // 的话，一个缺少 office 目录的旧 release 会被判为「可复用」，于是继续产出没有 Office 能力的
+  // 远端资源包 —— 正是本次 V-2 的失效模式。plugin.json 之外再钉住真正的能力资产
+  // （skill 正文与 check_office.py），避免 stage 出只有 manifest 的空壳插件。
+  ...remoteOfficePluginPackages.flatMap(({ name, skill }) => [
+    `packages/${name}-plugin/.zcode-plugin/plugin.json`,
+    `packages/${name}-plugin/skills/${skill}/SKILL.md`,
+    `packages/${name}-plugin/scripts/check_office.py`,
+  ]),
+  // 纯内容型插件同理：只校验 manifest 会把缺正文的空壳目录判为可复用，
+  // 于是继续产出「插件在、能力不在」的远端资源（V-2 同型失效）。
+  ...remoteContentPluginPackages.flatMap(({ name, requiredSeedPaths }) => [
+    `packages/${name}-plugin/.zcode-plugin/plugin.json`,
+    ...requiredSeedPaths.map((relativePath) => `packages/${name}-plugin/${relativePath}`),
+  ]),
 ];
 
 function readZCodeAgentRuntimeVersion() {

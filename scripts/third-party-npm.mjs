@@ -7,11 +7,64 @@ import { resolveSpawnRuntimeOptions } from "./spawn-command.mjs";
 
 const exec = promisify(execFile);
 export const hashBytes = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const unsupportedCanvas = new Set([
-  "@napi-rs/canvas-android-arm64",
-  "@napi-rs/canvas-linux-arm-gnueabihf",
-  "@napi-rs/canvas-linux-riscv64-gnu",
-]);
+// 原生二进制包按平台分发，每个平台一个包。pnpm 只会安装**当前平台**的那一个，
+// 其余平台包虽然出现在 lockfile 的生产依赖图里，但永远不会被安装。
+//
+// 历史：这条豁免最初只硬编码 @napi-rs/canvas 的 3 个平台，在 linux-x64 上必然失败；
+// 后来改成按 @napi-rs/canvas- 前缀动态判断，但判据仍然只认这一个包名前缀。
+// 新增 @ubjs/* 这类同样按平台分发的依赖后，同一类"平台包缺失"再次被误报成缺依赖 ——
+// 根因是判据绑定在包名上，而问题本质与包名无关。
+//
+// 现在改为**与包名无关的通用规则**：识别包名结尾的平台标签，与当前平台比对。
+//
+// 安全边界（必须保持）：**当前平台**的变体绝不免除。否则真正缺了当前平台的原生包
+// 也会被静默放过，而这条检查的全部价值就在于拦住那种情况。
+const PLATFORM_VARIANT_SUFFIX =
+  /(?:^|-)(darwin|linux|win32|android|freebsd|openbsd|netbsd|sunos|aix)-(x64|ia32|arm64|arm|armv7l|armhf|riscv64|loong64|s390x|ppc64le|ppc64|mips64el|universal)(?:-(gnu|musl|msvc|gnueabihf|android|eabi|eabihf))?$/u;
+
+/** 包名结尾的平台标签；不是平台变体包时返回 undefined。 */
+export function platformVariantTagOf(name) {
+  const match = PLATFORM_VARIANT_SUFFIX.exec(name);
+  if (!match) return undefined;
+  const [, os, arch, abi] = match;
+  return abi === undefined ? `${os}-${arch}` : `${os}-${arch}-${abi}`;
+}
+
+/**
+ * 当前平台的标签集合（可能不止一个写法）。
+ *
+ * 无 abi 后缀的 `linux-<arch>` 在 npm 生态里指 glibc（esbuild 等包如此命名），
+ * 所以 glibc 环境下它也算当前平台；musl 环境不算 —— 否则会把 musl 包误当成当前平台。
+ */
+export function currentPlatformVariantTags() {
+  const arch = process.arch;
+  switch (process.platform) {
+    case "darwin":
+      return new Set([`darwin-${arch}`]);
+    case "win32":
+      return new Set([`win32-${arch}-msvc`, `win32-${arch}`]);
+    case "linux": {
+      const isGnu = process.report?.getReport()?.header?.glibcVersionRuntime !== undefined;
+      const tags = new Set([`linux-${arch}-${isGnu ? "gnu" : "musl"}`]);
+      if (isGnu) tags.add(`linux-${arch}`);
+      return tags;
+    }
+    default:
+      return new Set([`${process.platform}-${arch}`]);
+  }
+}
+
+/**
+ * 该包是否属于**其他平台**的变体（因此允许未安装）。
+ *
+ * 只在包**缺失**时被调用：当前平台的变体仍会走到报错分支。
+ */
+export function isForeignPlatformVariant(name, currentTags = currentPlatformVariantTags()) {
+  const tag = platformVariantTagOf(name);
+  if (tag === undefined) return false;
+  return !currentTags.has(tag);
+}
+
 const noticeName =
   /(?:^|[._-])(?:licen[sc]es?|copying|notice|copyright|unlicense|third.party|ofl)(?:[._-]|$)/iu;
 
@@ -69,7 +122,7 @@ export function assertProductionGraphs(lockedProjects, installedProjects) {
   const locked = productionPackages(lockedProjects);
   const installed = productionPackages(installedProjects);
   const missing = [...locked].filter(
-    ([key, item]) => !installed.has(key) && !unsupportedCanvas.has(item.name),
+    ([key, item]) => !installed.has(key) && !isForeignPlatformVariant(item.name),
   );
   const stale = [...installed.keys()].filter((key) => !locked.has(key));
   if (missing.length || stale.length) {
@@ -152,7 +205,7 @@ export async function scanInstalledPackages(root, projects) {
 export function missingProductionPackages(required, installed) {
   const missing = [...required].filter(([key]) => !installed.has(key)).map(([, item]) => item);
   for (const item of missing) {
-    if (!unsupportedCanvas.has(item.name))
+    if (!isForeignPlatformVariant(item.name))
       throw new Error(`Missing installed dependency: ${item.name}@${item.version}`);
   }
   return missing;

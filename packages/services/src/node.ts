@@ -1,6 +1,5 @@
 /* eslint-disable max-lines -- host process 服务注册和启动装配需要集中维护，拆散后会更难追踪依赖注入顺序 */
 // Node.js service implementations — NOT safe to import in browser code
-import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -127,8 +126,9 @@ export { createOAuthProviderLogoutHandler } from "./oauth/oauthProviderLogout.js
 export { OAuthCredentialRepo } from "./oauth/repo/oauthCredentialRepo.js";
 export { ensureDeviceMid } from "./device/deviceMid.js";
 export type { EnsureDeviceMidOptions } from "./device/deviceMid.js";
-export { createTelemetryCore, ensureTelemetryDeviceMid } from "./telemetry/telemetryCore.js";
-export type { EnsureTelemetryDeviceMidOptions } from "./telemetry/telemetryCore.js";
+// 遥测已全部移除（P1）：telemetryCore 及其导出（createTelemetryCore / ensureTelemetryDeviceMid）
+// 已删除。deviceMid 的设备身份职责由 device/deviceMid.js 独立承担（上一行导出），
+// 它服务于 X-Device-Mid 计费头，不是遥测。
 export type { AccountRequestAuthResolver } from "./model-provider/accountProviderRequestAuthService.js";
 export { createAccountProviderCredentialStore } from "./model-provider/accountProviderCredentialStore.js";
 export type {
@@ -232,6 +232,12 @@ export {
   createHostApiNetworkTransport,
   type HostApiNetworkTransport,
 } from "./providers/api/nodeApiNetwork.js";
+export {
+  createProviderModelCatalogFetcher,
+  type ProviderModelCatalogFetcher,
+  type ProviderModelCatalogRequest,
+  type ProviderModelCatalogResult,
+} from "./model-provider/providerModelCatalogFetcher.js";
 export {
   buildRuntimeProcessEnvPatch,
   captureLoginShellEnvSnapshot,
@@ -342,7 +348,6 @@ import { createCredentialService } from "./credential/credentialService.js";
 import { createBroadcastService } from "./broadcast/broadcastService.js";
 import { createZCodeAgentService } from "./zcode-agent/zcodeAgentService.js";
 import type { ZCodeAgentCommandResolver } from "./zcode-agent/zcodeAgentProcessManager.js";
-import { buildAgentTelemetrySpawnEnv } from "./zcode-agent/agentTelemetryEnv.js";
 import { resolveZCodeAgentPresentationSurface } from "./zcode-agent/zcodeAgentPresentationSurface.js";
 import { createZCodeTaskServiceAdapter } from "./zcode-agent/zcodeTaskServiceAdapter.js";
 import { createZCodeSessionService } from "./zcode-session/zcodeSessionService.js";
@@ -378,6 +383,7 @@ import {
   IProviderSettingsService,
 } from "./model-provider/providerFacadeServices.js";
 import { createProviderSettingsConnectivityTester } from "./model-provider/providerSettingsConnectivity.js";
+import { createProviderModelCatalogFetcher } from "./model-provider/providerModelCatalogFetcher.js";
 import {
   createProviderProvisioningSource,
   listProviderProvisioningCredentialKeys,
@@ -426,6 +432,7 @@ import type {
 import { initializeRuntimeProcessEnv } from "./runtime-tools/runtimeCommandEnv.js";
 import {
   buildAgentEndpointOriginEnv,
+  buildAgentGithubMirrorEnv,
   buildAgentRuntimeEnv,
 } from "./runtime-tools/agentProxyEnv.js";
 import { ensureAppCaCert } from "./runtime-tools/appCaCert.js";
@@ -489,6 +496,11 @@ import {
   type WindowsCuaRuntime,
 } from "#src/cua-permission-broker/windowsCuaDevRuntime.js";
 import { createCanonicalCuaHelperInstaller } from "./cua-permission-broker/cuaHelperInstaller.js";
+import {
+  canRunOpenSourceCuaDriver,
+  mintCuaProductHelperEnv,
+  resolveCuaProductHelperSpawnEnv,
+} from "./cua-permission-broker/cuaProductHelperSpawnEnv.js";
 import { WindowsCuaHelperHost } from "#src/cua-permission-broker/windowsCuaDevHelperHost.js";
 import { DEV_HELPER_APP_NAME, HELPER_APP_NAME } from "@zcode/zcode-cua/broker/helperConstants";
 import { resolveBrokerSocketPath } from "@zcode/zcode-cua/broker/socketPath";
@@ -497,7 +509,7 @@ import {
   resolveSafeEndpointHostname,
   ZCODE_JWT_INVALID_BROADCAST_CHANNEL,
   formatLogPrefix,
-  isCredentialDecryptError,
+  // isCredentialDecryptError 的唯一消费者是 createTelemetryUserIdLoader，随其删除（P1）。
   isStartPlanModelProviderId,
   OFF_PEAK_PROVIDER_IDS,
   BIGMODEL_PROVIDER_ID,
@@ -513,7 +525,6 @@ import {
   ZCODE_CUA_PLUGIN_AUTHORITY_ENV_KEY,
   type ZCodeAutomation,
   type ZCodeAutomationRun,
-  getCapturedZCodeAgentTelemetryEnv,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
   ZAI_PROVIDER_ID,
   zcodeAccountAccessSchema,
@@ -1247,20 +1258,43 @@ export async function buildCuaProductHelperAgentEnv(
       }
     }
     markCuaProductHelperAgentEnvUnavailable(host);
-    if (!isCallerTimeout) {
-      cuaProductHelperAgentEnvRetryAt.set(host, Date.now() + CUA_PRODUCT_HELPER_AGENT_ENV_RETRY_MS);
-    }
-    logger.warn(
-      undefined,
-      `Computer Use Helper broker_unavailable; disabling workspace zcode-cua MCP server for this agent spawn (${cuaHelperStartErrorDetail(error)})`,
-    );
-    return {
+    const helperFailureEnv: Record<string, string> = {
       [BROKER_UNAVAILABLE_ENV]: isCallerTimeout
         ? // 冷启动仍在后台跑——"warming up"，reconcileRecoveredHelper 会在 helper ready 后
           // 只清理后续 spawn marker。
           "broker_unavailable: helper broker warming up"
         : `broker_unavailable: ${cuaHelperStartErrorDetail(error)}`,
     };
+    if (!isCallerTimeout) {
+      // Helper 真的起不来（F3-2）：CE 构建不随包携带 cua-helper —— macOS 的
+      // resources/cua-helper/*.app 与 Windows 的 resources/tools/cua-helper 都不在
+      // electron-builder.config.js:580-667 的 extraResources 里，也没有 runtime-manifest.json
+      // 的生产者 —— 因此 win32 的 acquire 分支必然落在这一跳。官方 Helper 只是 Computer Use
+      // 的凭据来源，不是门控：在开源驱动支持的平台上改用懒铸造契约
+      // （socket + config-provenance authority），与上面 darwin 懒启动分支同口径，
+      // 让 node-repl-host 的 trycua 路径照常可用。
+      const openSourceEnv = resolveCuaProductHelperSpawnEnv(helperFailureEnv);
+      if (openSourceEnv !== helperFailureEnv) {
+        // 作用域：只有真的回落到铸造契约时才清退避。下面未铸造的分支（开源驱动不支持该平台）
+        // 仍然走原来的 30s 退避——那里代表"真实存在的 Helper 反复启动失败"，退避仍然必要。
+        // 铸造则意味着不再依赖 Helper transport，留着退避反而有害：窗口内的后续 spawn 会在
+        // 本函数 :1173 拿到 "helper startup retry is deferred" envelope、又被判成"无凭据"，
+        // Windows 会退化成"每个退避窗口（CUA_PRODUCT_HELPER_AGENT_ENV_RETRY_MS，见 :549 = 30s）
+        // 只有一次会话能用电脑控制"。
+        cuaProductHelperAgentEnvRetryAt.delete(host);
+        logger.warn(
+          undefined,
+          `Computer Use Helper unavailable; using the open-source driver credential contract instead (${cuaHelperStartErrorDetail(error)})`,
+        );
+        return openSourceEnv;
+      }
+      cuaProductHelperAgentEnvRetryAt.set(host, Date.now() + CUA_PRODUCT_HELPER_AGENT_ENV_RETRY_MS);
+    }
+    logger.warn(
+      undefined,
+      `Computer Use Helper broker_unavailable; disabling workspace zcode-cua MCP server for this agent spawn (${cuaHelperStartErrorDetail(error)})`,
+    );
+    return helperFailureEnv;
   }
 }
 
@@ -1432,8 +1466,16 @@ export function createLocalServices(options: {
   });
   const systemService = createSystemService();
   // onboarding 完成记录：userId 由登录态补全（apikey/未登录为 null）。
+  //
+  // hasExistingLocalTask 用 ref 延迟求值：taskIndexRepo 在下方才创建（它持有
+  // tasks-index.sqlite 的连接句柄，必须在 sqliteReposToClose 里统一登记关闭，
+  // 不能为了这里提前 new 一个未登记的句柄——Windows 上会撞 EBUSY）。
+  // 与上面 zcodeJwtLogoutHandlerRef 是同一个套路：装配期只注册闭包，运行时才解引用。
+  const hasExistingLocalTaskRef: { current: (() => Promise<boolean>) | null } = { current: null };
   const onboardingRecordService = createOnboardingRecordService({
     loadUserId: async () => (await oauthCredentialRepo.loadActiveUserProfile())?.id ?? null,
+    // 不传 workspacePath 即全量查询，与官方 hasExistingLocalTask 同义（「本机已有任务」）。
+    hasExistingLocalTask: async () => (await hasExistingLocalTaskRef.current?.()) ?? false,
   });
   let handleOAuthProviderLogout: ReturnType<typeof createOAuthProviderLogoutHandler> | null = null;
   const oauthCredentialRepo = new OAuthCredentialRepo(credentialService, {
@@ -1625,6 +1667,9 @@ export function createLocalServices(options: {
         return providerConnectivityAgentService.testModelConnectivity(input);
       },
     }),
+    // 模型拉取复用 Host 的 ApiClient 出口：它已带上设置页的 httpProxy / noProxy / caCertPath，
+    // 与模型请求同一条链路。renderer 直连会被 CORS 拦且拿不到这些代理配置。
+    modelCatalogFetcher: createProviderModelCatalogFetcher({ apiClient }),
     disposeAccountSource: () => {
       disposeAccountProviderInvalidation();
       accountProviderRefreshErrorDispose();
@@ -2166,16 +2211,17 @@ export function createLocalServices(options: {
       // 供后续配置/生命周期 bookkeeping 使用；recovery 只清理 marker，不回收已有 Agent。
       cuaProductHelperWorkspaceRegistry.setEnabled(context, Boolean(cuaProductHelperHost));
       let cuaProductHelperEnv: Record<string, string> = {};
-      if (!helper && cuaPluginEnabled && process.platform === "darwin") {
+      // 平台集合从 darwin 扩到开源驱动支持的三个平台（F3-2）：Linux 永远没有官方 Helper
+      // ——createDefaultCuaProductHelper 对非 darwin/win32 直接返回 undefined，helper 恒为
+      // undefined——只写 darwin 会让 Linux 上的 trycua 路径永远拿不到凭据；
+      // win32 在这里是兜底（该平台通常能从 acquire 拿到 host 对象，失败回落见 catch 分支）。
+      if (!helper && cuaPluginEnabled && canRunOpenSourceCuaDriver(process.platform)) {
         // 懒启动：无托管 host 时注入稳定 socket；无 token（身份模式）、无 pluginAuthority
         // （其校验方就是 host，host 缺席时无意义）。SDK ensureBrokerAvailable 负责拉起。
         // pluginAuthority 是 agent 进程内的 config-provenance 随机数（bootstrap 捕获后写进
         // node_repl 配置 env，core 比对两者证明该配置出自本 bootstrap 而非用户配置文件）；
         // 它不需要 host——托管态由 host 铸造，懒启动态在此按 spawn 铸造，语义与校验完全一致。
-        cuaProductHelperEnv = {
-          [BROKER_SOCKET_ENV]: resolveBrokerSocketPath(),
-          [ZCODE_CUA_PLUGIN_AUTHORITY_ENV_KEY]: randomBytes(16).toString("hex"),
-        };
+        cuaProductHelperEnv = mintCuaProductHelperEnv();
         cuaProductHelperWorkspaceRegistry.setEnabled(context, false);
       } else if (cuaProductHelperHost && helper) {
         const candidateEnv = await buildCuaProductHelperAgentEnv(
@@ -2197,16 +2243,9 @@ export function createLocalServices(options: {
           [BROKER_UNAVAILABLE_ENV]: "broker_unavailable: helper lifecycle is disposed",
         };
       }
-      const telemetryEnv = getCapturedZCodeAgentTelemetryEnv();
-      const telemetryConfigured = Boolean(
-        telemetryEnv.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || telemetryEnv.OTEL_EXPORTER_OTLP_ENDPOINT,
-      );
-      const telemetryProfile = telemetryConfigured
-        ? await oauthCredentialRepo.loadActiveUserProfile().catch(() => null)
-        : null;
-      const telemetryDeviceMid = telemetryConfigured
-        ? options?.agentRuntimeContext?.getDeviceMid?.()?.trim()
-        : undefined;
+      // 遥测移除（P1）：这里原有 Agent OTLP spawn env 注入（buildAgentTelemetrySpawnEnv +
+      // getCapturedZCodeAgentTelemetryEnv），会把 OTEL_* 端点、鉴权与 ZCODE_TELEMETRY_* 身份
+      // 变量定向传给 CLI agent。模块与捕获链路已整体删除，Agent spawn env 不再含遥测变量。
       // Host 是旧配置迁移的唯一写入者。Agent spawn 前等待初始化完成，避免 Worker
       // 先拿到尚不存在的 provider_config.json 并发布短暂空 Registry。
       await providerConfigRuntime.start();
@@ -2216,6 +2255,9 @@ export function createLocalServices(options: {
           noProxy: agentNetwork.noProxy,
           caCertPath: settings.httpProxyCaCertPath,
         }),
+        // 插件市场安装在 agent 子进程内执行，子进程读不到设置服务，
+        // 加速前缀只能与代理/CA 一样经 spawn env 送达（消费端见 adapters/plugins/github-mirror-env.ts）。
+        ...buildAgentGithubMirrorEnv(settings.githubMirrorPrefix),
         // 把 host 解析出的权威 origin（含 settings 覆盖）下发给 agent，否则 agent 侧只按
         // env 推导，test env + 自定义端点时两侧信任判定的输入分叉、官方 MCP 整体 fail closed。
         ...buildAgentEndpointOriginEnv(await resolveCurrentZCodeEndpointOrigin()),
@@ -2224,12 +2266,6 @@ export function createLocalServices(options: {
         // 上面 cuaProductHelperEnv 已完成代际校验与 unavailable 兜底，取代 staging 侧
         // 直接调用 buildCuaProductHelperAgentEnv 的旧路径。
         ...cuaProductHelperEnv,
-        ...buildAgentTelemetrySpawnEnv({
-          deviceMid: telemetryDeviceMid,
-          runtimeSurface: options?.agentRuntimeContext?.runtimeSurface ?? "remote_workspace_host",
-          telemetryEnv,
-          userId: telemetryProfile?.id,
-        }),
         ...createNodeProviderRuntimePathEnv({
           // Built-in Active 路径按当前 Endpoint 隔离，不能通过同步的固定路径
           // getter 读取；Agent spawn 必须等待本轮 Endpoint Source 完成解析和物化。
@@ -2270,6 +2306,9 @@ export function createLocalServices(options: {
   // 在 services 层装配一个共享的 taskIndexRepo + syncer，session 任意入口都会唤醒
   // shadow 订阅，把 runtime 终态收敛进 sqlite。
   const taskIndexRepo = new TaskIndexRepo();
+  // 接线 onboarding 的「老用户」判定（上面 hasExistingLocalTaskRef 的落点）。
+  // 用 listTaskMetas 而非 countTasks：不传 workspacePath 即全量，与官方 hasExistingLocalTask 同义。
+  hasExistingLocalTaskRef.current = async () => (await taskIndexRepo.listTaskMetas({})).length > 0;
   const zcodeTaskIndexSyncer = createZCodeTaskIndexSyncer({
     agentService: zcodeAgentService,
     taskIndexRepo,
@@ -2630,83 +2669,11 @@ export function createLocalServices(options: {
   return services;
 }
 
-export function createTelemetryUserIdLoader(
-  credentialService: Pick<ICredentialService, "load">,
-): () => Promise<string> {
-  const log = createServiceLogger("telemetry-user-id");
-  return async () => {
-    try {
-      const activeProvider = (await credentialService.load("oauth:active_provider"))?.trim() ?? "";
-      if (!activeProvider) {
-        return "";
-      }
-
-      const rawUserInfo = await credentialService.load(`oauth:${activeProvider}:user_info`);
-      return readTelemetryOAuthUserId(rawUserInfo);
-    } catch (error) {
-      if (!isCredentialDecryptError(error)) {
-        throw error;
-      }
-
-      // Bugfix: telemetry 只是只读 userId 上报入口，不能抢在 host OAuthService 前
-      // 对损坏凭据做半套清理；否则会漏掉派生模型 provider key 的 logout 收口。
-      log.warn(undefined, "skip telemetry user id: OAuth credential decrypt failed", error);
-      return "";
-    }
-  };
-}
-
-/** 仅给同一事件账号返回当前 ZCode JWT；不缓存、不修改登录凭据。 */
-export function createTelemetryAuthorizationLoader(
-  credentialService: Pick<ICredentialService, "load">,
-): (userId: string) => Promise<string | null> {
-  return async (userId) => {
-    if (!userId) return null;
-    try {
-      const provider = (await credentialService.load("oauth:active_provider"))?.trim();
-      if (provider !== "zai" && provider !== "bigmodel") return null;
-      const readUserId = async () =>
-        readTelemetryOAuthUserId(await credentialService.load(`oauth:${provider}:user_info`));
-      if ((await readUserId()) !== userId) return null;
-      const jwt = (await credentialService.load("zcodejwttoken"))?.trim();
-      // 退出/切账号可能发生在异步读取期间；禁止将旧身份的 token 附到其他账号事件上。
-      if (
-        (await credentialService.load("oauth:active_provider"))?.trim() !== provider ||
-        (await readUserId()) !== userId
-      )
-        return null;
-      return jwt && /^[\x21-\x7e]+$/.test(jwt) ? `Bearer ${jwt}` : null;
-    } catch {
-      return null;
-    }
-  };
-}
-
-export function createTelemetryMarketingParamsLoader(
-  credentialService: ICredentialService,
-): () => Promise<import("@zcode/shared").OAuthLoginAttribution | null> {
-  // 恢复原因：固定返回 null 会丢掉已保存的渠道归因，数仓应读取 OAuth 的同一份事实。
-  const repo = new OAuthCredentialRepo(credentialService);
-  return () => repo.loadLoginAttribution();
-}
-
-function readTelemetryOAuthUserId(rawUserInfo: string | null): string {
-  if (!rawUserInfo) {
-    return "";
-  }
-
-  try {
-    const parsed = JSON.parse(rawUserInfo) as {
-      id?: unknown;
-      user_id?: unknown;
-    };
-    const id = typeof parsed.id === "string" ? parsed.id : "";
-    const userId = typeof parsed.user_id === "string" ? parsed.user_id : "";
-    return id.trim() || userId.trim();
-  } catch {
-    return "";
-  }
-}
+// 遥测已全部移除（P1）：createTelemetryUserIdLoader / createTelemetryAuthorizationLoader /
+// createTelemetryMarketingParamsLoader / readTelemetryOAuthUserId 四个纯上报用加载器已删除。
+// 它们只为数仓上报补 user_id / Authorization / 渠道归因；对应的 telemetryCore 与调用点
+// （desktop main index.ts）一并移除后无任何消费者。
+// 注意：OAuthCredentialRepo 本身保留（oauthService、remoteWorkspaceServiceCollection 仍在用）。
 
 export function disposeServiceResources(services: ServiceCollection): void {
   // host process 退出前以前没有统一遍历本地服务做资源回收，
