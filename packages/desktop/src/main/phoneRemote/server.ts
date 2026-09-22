@@ -529,13 +529,17 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
           acceptsGzip && GZIP_MIME_TYPES.has(contentType.split(";")[0]!.trim());
         let body: Buffer = file;
         if (compressible) {
-          const cached = gzipCache.get(staticEntry.filePath);
+          // 只有带哈希的不可变资产可缓存；index.html（spa 语义 no-cache）
+          // 每次都要反映最新构建，压缩结果不能复用，否则重建产物后永远发旧 HTML。
+          const cached = staticEntry.spa ? undefined : gzipCache.get(staticEntry.filePath);
           if (cached) {
             body = cached;
           } else {
             const started = Date.now();
             body = gzipSync(file, { level: 6 });
-            gzipCache.set(staticEntry.filePath, body);
+            if (!staticEntry.spa) {
+              gzipCache.set(staticEntry.filePath, body);
+            }
             logger.info("[phone-remote] gzip prepared", {
               file: basename(staticEntry.filePath),
               raw: file.byteLength,
