@@ -1974,6 +1974,7 @@ const enUS: Record<string, string> = {
   "settings.locale.system": "System default",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",
+  "mobileNav.backToList": "Back to list",
   "sidebar.phoneRemote": "Phone Remote",
   "sidebar.settings.systemDefault": "System default",
   "sidebar.settings.locale.en-US": "English",
