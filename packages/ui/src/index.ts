@@ -100,3 +100,9 @@ export { GlobalDatabaseStartupLoading } from "./root/GlobalDatabaseStartupLoadin
 // localTtftObserver 保留：P0 已把实现降级为 no-op，但 SessionPane / ConversationComposer /
 // agentConversationTransport 仍在调用其接口，删除会破坏协议契约。
 export { LocalTtftObserver, setLocalTtftObserver } from "@/v4/telemetry/localTtftObserver.js";
+
+// ── 手机远控（phone-remote）增量导出 ─────────────────────────────────────────
+// packages/web/src/phone 手机壳只消费这些既有模块；仅追加导出、不改实现，rebase 无冲突。
+export { useZCodeSessionStore, selectWorkspaceZCodeState } from "./store/zcodeSessionStore.js";
+export { useGlobalTaskList } from "./hooks/useGlobalTaskList.js";
+export type { WindowHostControllerTaskListItem } from "@zcode/services";
