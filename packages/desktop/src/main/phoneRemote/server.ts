@@ -61,6 +61,8 @@ export interface PhoneRemoteServerOptions {
   resolveTargetHost: () => ElectronUtilityProcess | null;
   /** server-info 暴露给手机端的 workspace 列表（本地 workspace 无 identity，按 path 键）。 */
   getWorkspaces: () => ServerRemoteWorkspaceInfo[];
+  /** 手机端请求重连远程工作区：交由桌面窗口渲染层的官方重连流程执行。 */
+  reconnectWorkspace: (workspaceKey: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface PhoneRemoteStatus {
@@ -554,6 +556,25 @@ export function createPhoneRemoteServer(options: PhoneRemoteServerOptions) {
       await savePhoneRemoteConfig(config);
       logger.info("[phone-remote] token regenerated");
       sendJson(res, 200, getStatus());
+      return;
+    }
+
+    if (url.pathname === "/api/phone-remote/reconnect" && req.method === "POST") {
+      const body = (await readJsonBody(req)) as { workspaceKey?: unknown };
+      if (typeof body.workspaceKey !== "string" || !body.workspaceKey.trim()) {
+        sendJson(res, 400, { ok: false, error: "workspaceKey is required" });
+        return;
+      }
+      try {
+        const result = await options.reconnectWorkspace(body.workspaceKey);
+        sendJson(res, 200, result);
+      } catch (error) {
+        logger.error("[phone-remote] reconnect request failed:", error);
+        sendJson(res, 500, {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       return;
     }
 

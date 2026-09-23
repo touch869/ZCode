@@ -13,7 +13,7 @@
  * rebase 约束：本目录不 import 官方组件内部实现；仅消费 @zcode/ui 主入口
  * 增量导出的既有模块与 @zcode/shared 协议常量。
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Cloud, Folder, Plus, Zap } from "lucide-react";
 import {
   useGlobalTaskList,
@@ -49,6 +49,8 @@ interface WorkspaceFactLite {
   workspacePath: string;
   workspaceIdentity?: string;
   remoteSessionId?: string;
+  /** 来自持久化会话的远程类型；未连接的远程工作区没有 remoteSessionId，靠它识别。 */
+  remoteKind?: "wsl" | "ssh" | "docker";
   sourceAvailability: "online" | "offline";
 }
 
@@ -196,13 +198,7 @@ type TaskListItem = ReturnType<typeof useGlobalTaskList>["items"][number];
 declare global {
   interface Window {
     __zcodeTabStoreE2E?: {
-      subscribe(listener: () => void): () => void;
       getState(): {
-        tabs: Array<{
-          kind: string;
-          workspacePath: string;
-          workspaceIdentity?: string;
-        }>;
         activateTabByPath(
           workspacePath: string,
           options?: { workspaceIdentity?: string },
@@ -212,25 +208,47 @@ declare global {
   }
 }
 
-const EMPTY_STORE_TABS: Array<{
+interface PersistedSessionEntryLite {
   kind: string;
   workspacePath: string;
   workspaceIdentity?: string;
-}> = [];
-const subscribeNoop = () => () => {};
+  target?: { kind?: string };
+}
 
 /**
- * 读取官方 TabStoreProvider 挂载的真实 tab store。桥在官方子树 effect 里挂载，
- * PhoneShell 作为后挂载的兄弟树，effect 阶段补读一次即可拿到。
+ * 直接读 settingService 里的 lastWorkspaceSession 持久化快照（本地 + 远程全量）。
+ * 不能依赖手机页自己的 tab store：useTabPersistence 默认恢复只还原 kind=local
+ * 条目，WSL/SSH 远程工作区在手机上下文里永远不会进 tab store（真机+内置浏览器
+ * 双向实测确认），而桌面侧栏看到的正是这份持久化数据。
  */
-function useE2ETabStoreBridge(): NonNullable<Window["__zcodeTabStoreE2E"]> | null {
-  const [store, setStore] = useState(() => window.__zcodeTabStoreE2E ?? null);
+function usePersistedWorkspaceEntries(): PersistedSessionEntryLite[] {
+  const services = useServices();
+  const settingService = services?.settingService ?? null;
+  const [entries, setEntries] = useState<PersistedSessionEntryLite[]>([]);
   useEffect(() => {
-    if (!store) {
-      setStore(window.__zcodeTabStoreE2E ?? null);
+    if (!settingService) {
+      return;
     }
-  }, [store]);
-  return store;
+    let disposed = false;
+    settingService
+      .get()
+      .then((settings) => {
+        if (disposed) {
+          return;
+        }
+        const persisted = (
+          settings as { lastWorkspaceSession?: PersistedSessionEntryLite[] }
+        ).lastWorkspaceSession;
+        setEntries(Array.isArray(persisted) ? persisted : []);
+      })
+      .catch(() => {
+        // 设置不可读时保持空列表；已连接工作区仍由投影覆盖
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [settingService]);
+  return entries;
 }
 
 /**
@@ -287,32 +305,29 @@ function PhoneTaskHome(props: {
   onOpenDraft: (fact: WorkspaceFactLite) => void;
 }) {
   const projected = useControllerWorkspaces();
-  const e2eStore = useE2ETabStoreBridge();
-  const storeTabs = useSyncExternalStore(
-    e2eStore ? e2eStore.subscribe : subscribeNoop,
-    e2eStore ? () => e2eStore.getState().tabs : () => EMPTY_STORE_TABS,
-    () => EMPTY_STORE_TABS,
-  );
+  const persistedEntries = usePersistedWorkspaceEntries();
   // 投影只含 host 已注册 source 的工作区；WSL/远程项目在未连接时 host 端
-  // resolveSource 返回 null、永不注册。真实窗口 tab store 里有它们——按离线
-  // 形态合并进首页，口径与桌面侧栏一致；连上后投影快照自动接管（key 去重）。
+  // resolveSource 返回 null、永不注册。按桌面侧栏同源口径，把持久化会话里
+  // 的远程工作区以离线形态合并进首页；连上后投影快照自动接管（key 去重）。
   const workspaces = useMemo(() => {
     const byKey = new Map(projected.map((fact) => [workspaceKeyOf(fact), fact]));
-    for (const tab of storeTabs) {
-      if (tab.kind !== "workspace") {
-        continue;
-      }
-      const key = tab.workspaceIdentity?.trim() || tab.workspacePath;
-      if (!byKey.has(key)) {
+    for (const entry of persistedEntries) {
+      const key = entry.workspaceIdentity?.trim() || entry.workspacePath;
+      if (key && !byKey.has(key)) {
         byKey.set(key, {
-          workspacePath: tab.workspacePath,
-          ...(tab.workspaceIdentity ? { workspaceIdentity: tab.workspaceIdentity } : {}),
+          workspacePath: entry.workspacePath,
+          ...(entry.workspaceIdentity ? { workspaceIdentity: entry.workspaceIdentity } : {}),
+          ...(entry.target?.kind === "wsl" ||
+          entry.target?.kind === "ssh" ||
+          entry.target?.kind === "docker"
+            ? { remoteKind: entry.target.kind }
+            : {}),
           sourceAvailability: "offline" as const,
         });
       }
     }
     return Array.from(byKey.values());
-  }, [projected, storeTabs]);
+  }, [projected, persistedEntries]);
   const workspaceTabs = useMemo(
     () =>
       workspaces.map((fact) => ({
@@ -333,6 +348,37 @@ function PhoneTaskHome(props: {
   });
   // 官方形态：卡片默认折叠，点卡片本身展开/折叠（无独立箭头按钮）。
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  // 未连接远程工作区的手动重连（对齐官方手机端卡片「重新连接」按钮）。
+  const [reconnectingKeys, setReconnectingKeys] = useState<Set<string>>(new Set());
+  const [failedKeys, setFailedKeys] = useState<Set<string>>(new Set());
+  const requestReconnect = async (key: string) => {
+    setReconnectingKeys((current) => new Set(current).add(key));
+    setFailedKeys((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+    try {
+      const res = await fetch("/api/phone-remote/reconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ workspaceKey: key }),
+      });
+      const result = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+      if (!res.ok || !result?.ok) {
+        throw new Error(`reconnect failed: ${res.status}`);
+      }
+    } catch {
+      setFailedKeys((current) => new Set(current).add(key));
+    } finally {
+      setReconnectingKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
   const tasksByKey = useMemo(() => {
     const map = new Map<string, WindowHostControllerTaskListItem[]>();
     for (const item of items) {
@@ -382,7 +428,10 @@ function PhoneTaskHome(props: {
         const latest = Math.max(0, ...tasks.map((task) => task.updatedAt ?? 0));
         const running = tasks.filter((task) => task.status === "running").length;
         const hasUnread = tasks.some((task) => task.unreadAt);
-        const isRemote = Boolean(fact.remoteSessionId);
+        // 官方侧栏规则：远程工作区（含未连接的 WSL/SSH）一律 Cloud，本地 Folder。
+        const isRemote = Boolean(fact.remoteSessionId || fact.remoteKind);
+        const isOfflineRemote = isRemote && fact.sourceAvailability === "offline";
+        const isReconnecting = reconnectingKeys.has(key);
         return (
           <section
             key={key}
@@ -461,6 +510,35 @@ function PhoneTaskHome(props: {
                 <Plus className="size-4" />
               </span>
             </div>
+            {isOfflineRemote ? (
+              <div className="px-4 pb-3">
+                <button
+                  type="button"
+                  disabled={isReconnecting}
+                  className={`flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border text-ui-sm ${
+                    failedKeys.has(key)
+                      ? "border-destructive/50 text-destructive"
+                      : "border-border text-foreground active:bg-surface-hover"
+                  } disabled:opacity-60`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void requestReconnect(key);
+                  }}
+                >
+                  {isReconnecting
+                    ? ZH
+                      ? "连接中…"
+                      : "connecting…"
+                    : failedKeys.has(key)
+                      ? ZH
+                        ? "重连失败，点击重试"
+                        : "reconnect failed, tap to retry"
+                      : ZH
+                        ? "重新连接"
+                        : "reconnect"}
+                </button>
+              </div>
+            ) : null}
             {expanded && running > 0 ? (
               <p className="px-4 pb-1 text-xs text-success">
                 {ZH ? `${running} 个任务运行中` : `${running} running`}

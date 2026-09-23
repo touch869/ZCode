@@ -521,6 +521,28 @@ function RootInner({
   });
 
   useEffect(() => {
+    // 手机远控重连执行器：phoneRemote 主进程端点经 executeJavaScript 调用，
+    // 把手机端发起的远程工作区重连交给官方重连流程执行。key 口径与
+    // buildWorkspaceSessionKey 一致（workspaceIdentity || workspacePath）。
+    const bridge = window as {
+      __zcodePhoneRemoteReconnect?: (
+        workspaceKey: string,
+      ) => Promise<{ ok: boolean; error?: string }>;
+    };
+    bridge.__zcodePhoneRemoteReconnect = async (workspaceKey) => {
+      try {
+        await handleReconnectRemoteWorkspace(workspaceKey);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    };
+    return () => {
+      delete bridge.__zcodePhoneRemoteReconnect;
+    };
+  }, [handleReconnectRemoteWorkspace]);
+
+  useEffect(() => {
     // fileDisplay 默认不传 basePath 时需要落到“当前激活 workspace”。
     // 之前纯工具层拿不到窗口内的 workspace 上下文，只能退回绝对路径，导致 mention / 文件展示在输入框里不够简洁。
     // 这里由 Root 在 workspace 切换时同步一份当前上下文，既保留工具层复用性，也不把 Zustand 依赖硬塞进工具函数。
