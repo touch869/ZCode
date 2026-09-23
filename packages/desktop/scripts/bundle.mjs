@@ -88,6 +88,9 @@ const commandStdoutMaxBuffer = 64 * 1024 * 1024;
 const requiredRuntimeModules = [
   "module-details-from-path",
   "pngjs",
+  // 与 electron-builder.config 的注入名单保持同口径：qrcode 的叶子依赖，
+  // 漏打会让正式包启动即 Cannot find module 'dijkstrajs'（见 09-23 首包事故）。
+  "dijkstrajs",
   // @babel/runtime 作为常见传递依赖保留机械校验。
   // 它的消费方通常是运行期动态 require（无法用静态 grep 排除），一旦生产包漏带，
   // 已安装应用会在主进程启动阶段才崩；保留校验的成本只是几十 KB asar 体积。

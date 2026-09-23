@@ -111,6 +111,11 @@ const asarCliPath = resolve(
 const REQUIRED_ASAR_RUNTIME_MODULES = [
   "module-details-from-path",
   "pngjs",
+  // 手机远控 server 的二维码生成 require("qrcode")：pnpm hoisted 布局下 electron-builder
+  // 打进了 qrcode 本体，却漏掉它的叶子依赖 dijkstrajs，正式包启动即
+  // "Cannot find module 'dijkstrajs'" 主进程弹窗崩溃。pngjs 同为 qrcode 的运行时依赖
+  // （历史上因 @fiahfy/icns 已在名单），这里把 dijkstrajs 一并显式注入。
+  "dijkstrajs",
   // @zcode/services 的代理连通性探测会动态 require("undici") 取 ProxyAgent。
   // tsup 虽然把 services 代码并进了主/host 产物，但不会把这个运行时 require 的包内联进去，
   // electron-builder 产物又可能漏掉 hoisted 的 undici，最终 mac 安装包启动即报 Cannot find module "undici"。
