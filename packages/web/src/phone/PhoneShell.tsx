@@ -427,7 +427,8 @@ function PhoneTaskHome(props: {
         const expanded = expandedKeys.has(key);
         const latest = Math.max(0, ...tasks.map((task) => task.updatedAt ?? 0));
         const running = tasks.filter((task) => task.status === "running").length;
-        const hasUnread = tasks.some((task) => task.unreadAt);
+        // 与官方 TaskListItem deriveTaskLeadingIndicator 同口径：typeof === "number" 判未读。
+        const hasUnread = tasks.some((task) => typeof task.unreadAt === "number");
         // 官方侧栏规则：远程工作区（含未连接的 WSL/SSH）一律 Cloud，本地 Folder。
         const isRemote = Boolean(fact.remoteSessionId || fact.remoteKind);
         const isOfflineRemote = isRemote && fact.sourceAvailability === "offline";
@@ -478,7 +479,7 @@ function PhoneTaskHome(props: {
                 <span className="mt-0.5 flex items-center gap-1.5 text-ui-sm text-foreground-subtle">
                   <span className="min-w-0 truncate font-mono">{fact.workspacePath}</span>
                   {hasUnread ? (
-                    <span className="size-1.5 flex-none rounded-full bg-[#4f8ef7]" />
+                    <span className="size-1.5 flex-none rounded-full bg-sky-500 dark:bg-sky-400" />
                   ) : null}
                   <span className="flex-none">{tasks.length} 个任务</span>
                   <ChevronRight
@@ -547,16 +548,18 @@ function PhoneTaskHome(props: {
             {expanded && tasks.length > 0 ? (
               <ul className="pb-2 pt-1">
                 {tasks.map((task) => (
-                  <li key={task.taskId} className="relative">
-                    {task.unreadAt ? (
-                      <span className="absolute left-5 top-1/2 size-1.5 -translate-y-1/2 rounded-full bg-[#4f8ef7]" />
-                    ) : null}
+                  <li key={task.taskId}>
                     <button
                       type="button"
                       className="flex items-center gap-3 rounded-xl px-2.5 py-3 text-left hover:bg-surface-hover"
                       style={{ marginLeft: 68, width: "calc(100% - 68px)" }}
                       onClick={() => props.onOpenTask(task)}
                     >
+                      <span className="flex size-4 flex-none items-center justify-center">
+                        {typeof task.unreadAt === "number" ? (
+                          <span className="size-1.5 rounded-full bg-sky-500 dark:bg-sky-400" />
+                        ) : null}
+                      </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-ui-base">{task.title}</span>
                         <span className="mt-0.5 block text-ui-sm text-foreground-subtle">
