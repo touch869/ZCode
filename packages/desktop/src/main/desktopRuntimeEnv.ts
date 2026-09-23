@@ -221,6 +221,15 @@ function resolveAvailableDevelopmentMockCdnDir(): string | undefined {
   return existsSync(releaseDir) ? mockCdnDir : undefined;
 }
 
+// CE 自建版本的 remote 制品不在官方 CDN 上，正式包默认的 CDN 链路必然 404。
+// 这里给打包态留一个离线兜底：把 mock-cdn 目录放到 <resources>/mock-cdn，
+// 或用 ZCODE_MOCK_CDN_DIR 指定任意位置；命中当前版本的 releases/<version> 才启用。
+function resolveAvailablePackagedMockCdnDir(): string | undefined {
+  const overrideDir = process.env.ZCODE_MOCK_CDN_DIR?.trim();
+  const mockCdnDir = overrideDir || join(process.resourcesPath, "mock-cdn");
+  return existsSync(join(mockCdnDir, "releases", ZCODE_VERSION)) ? mockCdnDir : undefined;
+}
+
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) {
     return false;
@@ -355,7 +364,11 @@ export function resolveRemoteAssetDirs(
   // 功能开关：开发态默认继续走 mock-cdn，只有显式打开开关才切到公网 CDN。
   // 这样能兼容离线开发场景，同时允许在开发环境提前验证真实 CDN 下载链路。
   if (isElectronAppPackaged() || shouldUseRemoteCdnInDevelopment(localEnv)) {
+    const packagedMockCdnDir = isElectronAppPackaged()
+      ? resolveAvailablePackagedMockCdnDir()
+      : undefined;
     return {
+      ...(packagedMockCdnDir ? { mockCdnDir: packagedMockCdnDir } : {}),
       remoteCdnBaseUrl,
       remoteCdnBaseUrls,
       remoteCacheDir: resolveRemoteAssetCacheDir(localEnv),
