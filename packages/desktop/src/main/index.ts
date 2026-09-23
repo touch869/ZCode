@@ -654,6 +654,44 @@ function resolvePhoneRemoteWorkspaces() {
   }
   return orderedPaths.map((path) => ({ path, label: basename(path) || path }));
 }
+
+// 手机端发起的远程工作区重连：在桌面窗口渲染层里执行官方重连流程
+// （Root 挂载的 __zcodePhoneRemoteReconnect 桥）。
+function resolvePhoneRemoteDesktopWebContents(): Electron.WebContents | null {
+  const focused =
+    lastFocusedWindowWebContentsId !== null
+      ? webContents.fromId(lastFocusedWindowWebContentsId)
+      : null;
+  if (focused && !focused.isDestroyed()) {
+    return focused;
+  }
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+      return win.webContents;
+    }
+  }
+  return null;
+}
+
+async function reconnectPhoneRemoteWorkspace(
+  workspaceKey: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const contents = resolvePhoneRemoteDesktopWebContents();
+  if (!contents) {
+    return { ok: false, error: "桌面窗口不可用" };
+  }
+  const script = `(window.__zcodePhoneRemoteReconnect ? window.__zcodePhoneRemoteReconnect(${JSON.stringify(
+    workspaceKey,
+  )}) : Promise.reject(new Error("重连执行器未就绪")))`;
+  try {
+    const result = (await contents.executeJavaScript(script, true)) as
+      | { ok: boolean; error?: string }
+      | undefined;
+    return result ?? { ok: false, error: "重连执行器无返回" };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
 // 手机远控服务器句柄；app ready 后创建并启动（loopback 常驻，外部监听随开关）。
 let phoneRemoteServer: ReturnType<typeof createPhoneRemoteServer> | null = null;
 const disposingHostProcessTimers = new WeakMap<
@@ -1830,6 +1868,7 @@ app.whenReady().then(async () => {
     logger,
     resolveTargetHost: resolvePhoneRemoteTargetHost,
     getWorkspaces: resolvePhoneRemoteWorkspaces,
+    reconnectWorkspace: reconnectPhoneRemoteWorkspace,
   });
   try {
     await phoneRemoteServer.start();
