@@ -36,6 +36,7 @@ import type {
   SessionId,
   SessionProjection,
   SessionStorePort,
+  SessionTitleSource,
   SessionGoal,
   SavedWorkflowScope,
   TargetChangedPayload,
@@ -513,8 +514,13 @@ export interface AgentRuntime {
     input: string,
     options?: { goalSummaryTargetID?: string; traceContext?: TraceContext },
   ): void;
-  /** renameSession：用户显式重命名（titleSource=custom，发 SessionTitleUpdated）。 */
-  setCustomSessionTitle(input: { title: string; traceContext: TraceContext }): Promise<void>;
+  /** renameSession：用户显式重命名或 automation 冻结（titleSource=custom，发 SessionTitleUpdated）。 */
+  setCustomSessionTitle(input: {
+    title: string;
+    traceContext: TraceContext;
+    /** 乐观锁：仅覆盖期望来源的标题（custom 不在内）；不传 = 无条件覆盖。 */
+    expectedTitleSources?: readonly SessionTitleSource[];
+  }): Promise<void>;
   maybeStartGoalSummaryTitleGeneration(
     input: string,
     targetID: string,
