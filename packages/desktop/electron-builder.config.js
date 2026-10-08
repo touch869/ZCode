@@ -581,6 +581,24 @@ export default {
           },
         ]
       : []),
+    // ── 本地 Web 服务（远程控制，自 CE v3.14.4-ce.2 移植）随包 ─────────────────────
+    // 三件事：HTTP 入口 .cjs、node-pty 原生件、裁剪 sourcemap 后的 web 静态资源。
+    // 主进程用 `process.resourcesPath/web-service/**` 解析（web-service/paths.ts 所有权约定）。
+    {
+      from: resolve(workspaceRoot, "packages/server/dist/remote/zcode-server-http.cjs"),
+      to: "web-service/zcode-server-http.cjs",
+    },
+    {
+      // 本仓 node-pty 走 prebuilds 布局（windows-prebuild-available）；runtime 期望
+      // web-service/build/Release/pty.node，故从 prebuilds 拷到该落点。
+      from: resolve(workspaceRoot, "node_modules/node-pty/prebuilds/win32-x64/pty.node"),
+      to: "web-service/build/Release/pty.node",
+    },
+    {
+      from: resolve(workspaceRoot, "packages/web/dist"),
+      to: "web-service/web",
+      filter: ["**/*", "!**/*.map"],
+    },
     {
       // 正式包不能依赖仓库目录读取社区、反馈等内置兜底配置。
       // 显式放入 resources/config，与主进程的 process.resourcesPath 解析保持一致。

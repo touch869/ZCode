@@ -14,6 +14,25 @@ export function createDesktopPlatform(options: {
     selectFile: () => window.zcode.selectFile(),
     selectFiles: () => window.zcode.selectFiles?.() ?? Promise.resolve([]),
     createTempTextAttachment: (payload) => window.zcode.createTempTextAttachment(payload),
+    // 本地 Web 服务（远程控制，契约 §5；自 CE v3.14.4-ce.2 移植）。preload 已暴露这八条；
+    // 这里把它们映射进 IPlatformService —— 少这一步的话 `window.zcode` 有、`IPlatformService`
+    // 没有，UI 侧的能力探测会判成"能力缺失"⇒ 面板在桌面端也不渲染（静默失效）。
+    getWebServiceStatus: () => window.zcode.getWebServiceStatus(),
+    startWebService: (options) => window.zcode.startWebService(options),
+    stopWebService: () => window.zcode.stopWebService(),
+    getWebServiceConnectionInfo: () => window.zcode.getWebServiceConnectionInfo(),
+    onWebServiceChanged: (handler) => window.zcode.onWebServiceChanged(handler),
+    // 连接面三条（谁连着）。条件定义而非无条件转发：旧 preload（升级后未重启的窗口）缺这三条时，
+    // 让缺失如实反映成 undefined，而不是调用时才抛错。
+    getWebServiceConnections: window.zcode.getWebServiceConnections
+      ? () => window.zcode.getWebServiceConnections()
+      : undefined,
+    revokeWebServiceConnection: window.zcode.revokeWebServiceConnection
+      ? (input) => window.zcode.revokeWebServiceConnection(input)
+      : undefined,
+    rotateWebServiceToken: window.zcode.rotateWebServiceToken
+      ? () => window.zcode.rotateWebServiceToken()
+      : undefined,
     onRemoteConnectionLog: (handler) => window.zcode.onRemoteConnectionLog(handler),
     onRemoteSessionClosed: (handler) => window.zcode.onRemoteSessionClosed(handler),
     onBotRemoteWorkspaceReconnected: (handler) =>

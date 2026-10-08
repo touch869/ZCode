@@ -204,6 +204,9 @@ import {
   saveCliMcpToUserDirectory,
 } from "./mcpUserDirectory/index.js";
 import { registerRemoteIpcHandlers } from "./desktopMainIpcRemote.js";
+import { registerWebServiceIpc } from "./web-service/ipc.js";
+import { createWebServiceConnectionPlane } from "./web-service/remoteControlClient.js";
+import { createWebServiceRuntime } from "./web-service/runtime.js";
 import {
   configureDesktopStabilityTelemetry,
   getStabilityLifecycleScene,
@@ -2162,6 +2165,36 @@ app.whenReady().then(async () => {
     broker: rendererActionTraceBroker,
     env: process.env,
     logger,
+  });
+
+  // ── 本地 Web 服务（远程控制 Slice 1，自 CE v3.14.4-ce.2 移植）──────────────────
+  // 生产者（随包 .cjs / 静态根 / pty.node + spawn / 探活 / 选端口 / 停 pid）全在
+  // web-service/runtime.ts；这里只做接线与注册：状态由编排器持有，main 不承载业务状态。
+  // 令牌只经 connectionInfo 的 linkWithToken 交付渲染进程；status/changed 的载荷不含令牌。
+  const webServiceRuntime = createWebServiceRuntime({
+    resourceRoot: process.resourcesPath,
+    ...(app.isPackaged ? {} : { fallbackRoot: app.getAppPath() }),
+    nodeExecPath: process.execPath,
+    childEnv: { ELECTRON_RUN_AS_NODE: "1" },
+    onChildOutput: (chunk, stream) => logger.info(`[web-service:${stream}] ${chunk.trimEnd()}`),
+  });
+  // 连接面（谁连着）：main 侧带上令牌去请求本机服务端的 HTTP 端点。
+  const webServiceConnectionPlane = createWebServiceConnectionPlane({
+    status: () => webServiceRuntime.controller.status(),
+    tokenPath: webServiceRuntime.tokenPath,
+  });
+  registerWebServiceIpc({
+    ipcMain,
+    controller: webServiceRuntime.controller,
+    connectionPlane: webServiceConnectionPlane,
+    broadcast: (channel, payload) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, payload);
+        }
+      }
+    },
+    onError: (error, channel) => logger.error(`[web-service] ${channel} 失败`, error),
   });
 
   registerRemoteIpcHandlers({

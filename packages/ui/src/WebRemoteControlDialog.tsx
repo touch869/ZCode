@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
+import { usePlatform } from "@/hooks/usePlatform.js";
+import { WebRemoteScanSection } from "@/WebRemoteScanSection.js";
 import { logger } from "@/logger.js";
 import { getBotProviderRegionTagLabelId } from "@/botsUi.js";
 
@@ -41,6 +43,7 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
   workspaceIdentity?: string;
 }) {
   const { intl } = useZCodeIntl();
+  const platform = usePlatform();
   const [botsDialogOpen, setBotsDialogOpen] = useState(false);
   const [botEntryProvider, setBotEntryProvider] =
     useState<RemoteControlBotProvider | null>(null);
@@ -69,7 +72,7 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           showCloseButton={false}
-          className="max-h-[calc(100vh-6rem)] max-w-lg gap-0 overflow-hidden rounded-2xl p-0"
+          className="max-h-[calc(100vh-6rem)] max-w-4xl gap-0 overflow-hidden rounded-2xl p-0"
         >
           <Button
             type="button"
@@ -96,13 +99,14 @@ export const WebRemoteControlDialog = memo(function WebRemoteControlDialogCompon
                     {intl.formatMessage({ id: "webRemoteControl.title" })}
                   </DialogTitle>
                   <DialogDescription>
-                    {intl.formatMessage({ id: "webRemoteControl.description" })}
+                    {intl.formatMessage({ id: "webRemoteControl.description.upgraded" })}
                   </DialogDescription>
                 </div>
               </div>
             </DialogHeader>
 
-            <div className="mt-5 grid gap-4">
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+              {platform ? <WebRemoteScanSection platform={platform} /> : null}
               <section className="flex min-h-[360px] flex-col rounded-xl border border-border bg-card p-4">
                 <div className="mb-4 flex items-start gap-2">
                   <BotIcon className="mt-0.5 size-4 shrink-0 text-foreground-subtle" />
