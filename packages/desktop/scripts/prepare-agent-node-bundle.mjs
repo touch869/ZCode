@@ -18,6 +18,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { runCommand } from "../../../scripts/spawn-command.mjs";
 import { stageAgentBundle } from "./stage-agent-bundle.mjs";
+// Computer Use 驱动与插件 staging：全部逻辑收敛在独立文件，官方脚本只保留这一行调用。
+import { stageCuaDriverRuntime } from "./cua-driver-package-assets.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(scriptDir, "..");
@@ -291,5 +293,6 @@ async function stageBundledSkillPack() {
 buildCliBundle();
 buildOfficialPluginRuntimes();
 stageBundle();
+stageCuaDriverRuntime();
 stageOfficialPlugins();
 await stageBundledSkillPack();

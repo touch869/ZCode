@@ -41,7 +41,8 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** 目录总字节数。只用于把体积写进构建日志（用户需要知道安装包会变大多少）。 */
 function directorySize(dir) {
@@ -229,4 +230,68 @@ export function verifyStagedCuaDriver({
   }
 
   return issues;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// relay-official 自包含编排入口（架构原则：官方构建脚本只保留一行调用，其余都在本文件）。
+//
+// stageCuaDriverRuntime() 做两件事（必须在 prepare-agent-node-bundle.mjs 的
+// stageBundle() 之后调用——stageAgentBundle 会清空并重建 glm 目录）：
+//   1) 把 @trycua/cua-driver 及平台原生依赖闭包 stage 进
+//      glm/packages/node-repl-host/node_modules（node-repl-host 运行时
+//      `await import("@trycua/cua-driver")` 的解析落点）；
+//   2) 把 computer-use 插件内容目录 stage 进 glm/packages/zcode-cua-plugin ——
+//      官方 official-plugin-definitions.ts 已声明该插件（rootCandidates 指向
+//      packages/zcode-cua-plugin，requiredSeedPaths 校验三件套），seed 机制零改动。
+
+function normalizeTargetOs(value) {
+  const v = (value || "").trim().toLowerCase();
+  if (v === "win" || v === "win32") return "win32";
+  if (v === "mac" || v === "darwin") return "darwin";
+  if (v === "linux") return "linux";
+  return undefined;
+}
+
+function normalizeTargetArch(value) {
+  const v = (value || "").trim().toLowerCase();
+  if (v === "x64" || v === "arm64") return v;
+  return undefined;
+}
+
+export function stageCuaDriverRuntime() {
+  const scriptDir = dirname(fileURLToPath(import.meta.url));
+  const desktopRoot = resolve(scriptDir, "..");
+  const repoRoot = resolve(desktopRoot, "..", "..");
+  const os = normalizeTargetOs(process.env.ZCODE_TARGET_OS) || process.platform;
+  const arch = normalizeTargetArch(process.env.ZCODE_TARGET_ARCH) || process.arch;
+  const platformKey = `${os}-${arch}`;
+  const glmDir = resolve(desktopRoot, "bundled-agents", platformKey, "glm");
+
+  const { staged, triple } = stageCuaDriverIntoBundledAgents({
+    lookupRoots: [repoRoot, desktopRoot],
+    glmDir,
+    targetPlatform: {
+      os,
+      arch,
+      key: platformKey,
+      npmLibc: os === "linux" ? "glibc" : undefined,
+    },
+  });
+  const bytes = staged.reduce((sum, item) => sum + item.size, 0);
+  console.log(
+    `[cua-driver-assets] staged Computer Use driver (${triple}): ` +
+      `${staged.length} packages, ${(bytes / 1024 / 1024).toFixed(1)} MiB`,
+  );
+
+  // computer-use 插件内容目录：官方发行包的 MIT 资产（docs/skills/client 三件套）。
+  const pluginSource = resolve(repoRoot, "apps/zcode-cli/packages/zcode-cua-plugin");
+  const pluginTarget = resolve(glmDir, "packages/zcode-cua-plugin");
+  if (!existsSync(resolve(pluginSource, ".zcode-plugin/plugin.json"))) {
+    throw new Error(`[cua-driver-assets] missing computer-use plugin source: ${pluginSource}`);
+  }
+  rmSync(pluginTarget, { recursive: true, force: true });
+  mkdirSync(dirname(pluginTarget), { recursive: true });
+  cpSync(pluginSource, pluginTarget, { recursive: true });
+  console.log(`[cua-driver-assets] staged computer-use plugin -> ${pluginTarget}`);
 }
