@@ -30,13 +30,18 @@ import {
 } from "./process-lifecycle.js";
 import { toMcpRunResult } from "./result.js";
 import {
-  JS_TOOL_DESCRIPTION,
+  resolveJsToolDescription,
   NODE_REPL_DEFAULT_TIMEOUT_MS,
   NODE_REPL_SERVER_INSTRUCTIONS,
+  withComputerUseAvailabilityNote,
   NODE_REPL_SERVER_VERSION,
 } from "./tool-contract.js";
 
 const MAX_SYNC_TIMEOUT_MS = 120_000;
+// 驱动包名必须与 packages/zcode-cua/cua-driver-runtime.js 的 DRIVER_PACKAGE 一致；
+// 那边是 esbuild 无法内联的变量 specifier，所以两处都只能是字面量，靠这条注释与
+// regression 测试（packages/services/test/platformVariantAndCuaDriverStaging.test.ts）钉住。
+const CUA_DRIVER_PACKAGE_SPECIFIER = "@trycua/cua-driver";
 const UNTRUSTED_SESSION_KEY = "__unscoped__";
 const WORKER_KIND = "zcode-node-repl-call";
 export const NODE_REPL_MCP_PROCESS_TITLE = "zcode-node-repl-mcp";
@@ -73,14 +78,19 @@ const requestContextSchema = z
   })
   .passthrough();
 
-const tools: Tool[] = [
-  {
-    name: "js",
-    description: JS_TOOL_DESCRIPTION,
-    // host MCP 曾手写出 title optional 的模型合同，和 built-in 合同分叉后 UI 只能显示固定完成文案。
-    inputSchema: JsInputJsonSchema as Tool["inputSchema"],
-  },
-];
+// `js` 工具的描述随「本会话是否启用 CUA」变化：CUA 关闭时要显式告诉模型「没有 CUA，也没有东西
+// 需要安装」，否则它拿到 node_repl 就会自行安装驱动并猜错包名（方案 a，见 tool-contract.ts）。
+// 工具名与 inputSchema 不变，只有描述多一句后缀。
+function buildNodeReplTools(input: { computerUseEnabled: boolean }): Tool[] {
+  return [
+    {
+      name: "js",
+      description: resolveJsToolDescription(input),
+      // host MCP 曾手写出 title optional 的模型合同，和 built-in 合同分叉后 UI 只能显示固定完成文案。
+      inputSchema: JsInputJsonSchema as Tool["inputSchema"],
+    },
+  ];
+}
 
 export interface NodeReplExecuteInput {
   code: string;
@@ -193,9 +203,17 @@ export function createNodeReplMcpRuntime(
 
   const server = new Server(
     { name: "node_repl", version: NODE_REPL_SERVER_VERSION },
-    { capabilities: { tools: {} }, instructions: NODE_REPL_SERVER_INSTRUCTIONS },
+    {
+      capabilities: { tools: {} },
+      // CUA 未启用时在 instructions 里显式说明「没有 CUA，也没有东西需要安装」，
+      // 避免模型拿到 node_repl 就自行安装驱动（方案 a，见 tool-contract.ts）。
+      instructions: withComputerUseAvailabilityNote(NODE_REPL_SERVER_INSTRUCTIONS, {
+        computerUseEnabled: cuaRuntime !== undefined,
+      }),
+    },
   );
 
+  const tools = buildNodeReplTools({ computerUseEnabled: cuaRuntime !== undefined });
   server.setRequestHandler("tools/list", async () => ({ tools }));
   server.setRequestHandler("tools/call", async (request, extra) => {
     if (disposed) throw new Error("node_repl runtime is disposed");
@@ -372,12 +390,64 @@ if (!isMainThread && isWorkerCallData(workerData)) {
 export function captureComputerUseRuntimeFromEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): ComputerUseRuntime | undefined {
-  const socketPath = env.ZCODE_CUA_PERMISSION_BROKER_SOCKET?.trim();
-  if (!socketPath) return undefined;
+  // 只有桌面/共享宿主会话才提供 Computer Use：ZCODE_CUA_NODE_REPL_HOST 由宿主在把
+  // node_repl 作为 Computer Use 宿主拉起时设置。没有它时不要凭空创建运行时 ——
+  // 否则每个普通 MCP 客户端（含 CI、测试）都会拉起一次原生驱动。
+  // 取值口径与 plugin-host-command.ts 一致（严格等于 "1"）：宿主只在确实要提供
+  // Computer Use 时才注入该值，写成 "0" 或空串都视为不提供。
+  if (env.ZCODE_CUA_NODE_REPL_HOST !== "1") return undefined;
+  // 护栏：驱动**解析不到**时不要报告「CUA 可用」。
+  //
+  // 为什么必须在这里探测：`createComputerUseRuntime` 总是返回一个对象，而驱动是懒加载
+  // （packages/zcode-cua/cua-driver-runtime.js:144 的首次 callDriverOnce 才 ensureDriver）。
+  // 于是「驱动载荷缺失」不会让 cuaRuntime 变 undefined —— 两道防「模型自行装包」的护栏
+  // 因此**同时失效**：
+  //   1. `js` 工具描述不再追加 JS_TOOL_DESCRIPTION_COMPUTER_USE_DISABLED_SUFFIX；
+  //   2. CUA_UNAVAILABLE_IN_SESSION_MESSAGE（broker 缺失路径）不会触发。
+  // 模型最终只看到首次调用抛出的「driver is unavailable … Cannot find package
+  // '@trycua/cua-driver'」—— 点名包名且说「不可用」，实测正是诱导它自行 npm install
+  // 猜包名的文案（cua-bridge.ts:10-15 记录过这个失效模式）。见
+  // .reverse/29-cua-seed/CUA-SEED-PAYLOAD.md。
+  //
+  // 探测只做**解析**，不 import 驱动：不拉起原生库、不产生副作用，CI 与无图形会话
+  // 也安全。解析失败即按「本会话 CUA 不可用」降级，让上面两道护栏照常生效。
+  if (!isCuaDriverResolvable()) return undefined;
+  // 实现选择：默认走 MIT 许可的 @trycua/cua-driver。
+  //
+  // 这里**不再**按 ZCODE_CUA_PERMISSION_BROKER_SOCKET 决定实现。那个 socket 是官方
+  // Helper（未标注许可的私有二进制）的连接材料，本项目不使用它；仅 Linux 与 macOS
+  // 的官方 Helper 也都不支持，而 cua-driver 三平台都有预编译产物。
+  // 仍读取它只为把「宿主为何以为有官方 Helper」写进诊断，不改变实现选择。
   return createComputerUseRuntime({
-    brokerSocketPath: socketPath,
-    refreshMarkerPath: env.ZCODE_CUA_PERMISSION_BROKER_REFRESH_MARKER?.trim(),
+    driver: "open-source",
+    ...(env.ZCODE_CUA_PERMISSION_BROKER_SOCKET?.trim()
+      ? { brokerSocketPath: env.ZCODE_CUA_PERMISSION_BROKER_SOCKET.trim() }
+      : {}),
+    ...(env.ZCODE_CUA_PERMISSION_BROKER_REFRESH_MARKER?.trim()
+      ? { refreshMarkerPath: env.ZCODE_CUA_PERMISSION_BROKER_REFRESH_MARKER.trim() }
+      : {}),
   });
+}
+
+/**
+ * 驱动包是否能被**本模块**解析到。
+ *
+ * 与驱动自身的加载口径保持一致（都是 Node 的包解析，从本 bundle 所在目录向上找
+ * node_modules），所以「这里解析成功」与「懒加载时 import 成功」是同一个判据。
+ * 只解析、不加载：避免探测本身拉起原生库（那正是 captureComputerUseRuntimeFromEnvironment
+ * 刻意避免的事 —— 普通 MCP 客户端与 CI 不该拉起驱动）。
+ *
+ * 用 import.meta.resolve 而不是 createRequire().resolve：驱动是 ESM-only
+ * （`"type": "module"`，exports 里只有 import 条件），createRequire 会以 CJS 条件解析，
+ * 实测抛 ERR_PACKAGE_PATH_NOT_EXPORTED —— 那会把「载荷在」误判成「不可用」。
+ */
+function isCuaDriverResolvable(): boolean {
+  try {
+    import.meta.resolve(CUA_DRIVER_PACKAGE_SPECIFIER);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isWorkerCallData(value: unknown): value is WorkerCallData {
