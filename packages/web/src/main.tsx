@@ -1,16 +1,16 @@
 /* eslint-disable max-lines -- Web 入口集中编排启动、路由与 workspace shell wiring，与 Root.tsx 同样先保持入口收口，避免跨层状态拆散。 */
 import { createRoot } from "react-dom/client";
 import {
-  AppErrorBoundary,
-  Root,
-  ZCodeIntlProvider,
   generateMobileDeviceFingerprint,
   playTaskNotificationSound,
   setStreamClientId,
   type Theme,
 } from "@zcode/ui";
 import "@zcode/ui/styles.css";
-import { connectViaWebSocket } from "@zcode/client";
+import { SERVER_REMOTE_PROTOCOL_VERSION } from "@zcode/shared";
+import { evaluateServerCompatibility } from "./serverCompatibility.js";
+import { WebAppRoot } from "./WebAppRoot.js";
+import { buildUnauthorizedMessage, classifyServerInfoProbe } from "./authProbe.js";
 import { WebCallbackPage } from "./auth/WebCallbackPage.js";
 import { createWebAuthService } from "./auth/webAuthService.js";
 import { WEB_ZAI_OAUTH_CONFIG, resolveWebAuthDevReturnTo } from "./auth/webZaiOAuthConfig.js";
@@ -367,25 +367,46 @@ async function resolveWebBootstrap(): Promise<WebBootstrapResult> {
     return { wsUrl };
   }
 
+  let serverInfo: Partial<ServerRemoteInfo> | undefined;
+  let probe: { status?: number; networkError?: boolean } = { networkError: true };
   try {
     const response = await fetch("/api/server-info", {
       cache: "no-store",
     });
-    if (!response.ok) {
-      return { wsUrl };
+    probe = { status: response.status };
+    if (response.ok) {
+      serverInfo = (await response.json()) as Partial<ServerRemoteInfo>;
     }
-    const serverInfo = (await response.json()) as Partial<ServerRemoteInfo>;
-    const workspace = Array.isArray(serverInfo.workspaces) ? serverInfo.workspaces[0] : undefined;
-    return {
-      wsUrl,
-      ...(workspace?.path ? { initialWorkspaceAbsPath: workspace.path } : {}),
-      ...(workspace?.workspaceIdentity
-        ? { initialWorkspaceIdentity: workspace.workspaceIdentity }
-        : {}),
-    };
   } catch {
-    return { wsUrl };
+    // 网络层失败：交给连接监督器（覆盖层 + 退避重连）处理，这里不拦。
+    probe = { networkError: true };
   }
+
+  // 401/403 是**授权问题**，不是网络问题：直接渲染未授权屏并停止（不进 WS、不重试），
+  // 否则用户会看到「正在重连」这种把授权说成网络问题的误导提示。见 authProbe.ts。
+  if (classifyServerInfoProbe(probe) === "unauthorized") {
+    throw new Error(
+      buildUnauthorizedMessage(/^zh\b/i.test(navigator.language), window.location.origin),
+    );
+  }
+
+  // 拿到 server-info 时**必须**校验契约版本：web 资产与服务器不同版本时不进入应用，
+  // 也不静默降级（RPC 层不做版本协商）。见 docs/development/web-remote-control.md §5。
+  if (serverInfo) {
+    const compatibility = evaluateServerCompatibility(serverInfo, SERVER_REMOTE_PROTOCOL_VERSION);
+    if (!compatibility.compatible) {
+      throw new Error(compatibility.reason);
+    }
+  }
+
+  const workspace = Array.isArray(serverInfo?.workspaces) ? serverInfo.workspaces[0] : undefined;
+  return {
+    wsUrl,
+    ...(workspace?.path ? { initialWorkspaceAbsPath: workspace.path } : {}),
+    ...(workspace?.workspaceIdentity
+      ? { initialWorkspaceIdentity: workspace.workspaceIdentity }
+      : {}),
+  };
 }
 
 function WebBootstrapErrorScreen({ message }: { message: string }) {
@@ -442,37 +463,11 @@ async function bootstrapWebApp() {
     return;
   }
 
-  try {
-    const services = await connectViaWebSocket(bootstrap.wsUrl, {
-      onClose: () => {},
-    });
-    const platform = createWebPlatform();
-    document.title = "ZCode - Web + Server";
-
-    root.render(
-      <AppErrorBoundary>
-        <ZCodeIntlProvider
-          settingService={services.settingService}
-          broadcastService={services.broadcastService}
-        >
-          <Root
-            services={services}
-            platform={platform}
-            initialWorkspaceAbsPath={bootstrap.initialWorkspaceAbsPath}
-            initialWorkspaceIdentity={bootstrap.initialWorkspaceIdentity}
-            initialTaskId={bootstrap.initialTaskId}
-            restoreSession={bootstrap.restoreSession}
-            allowOpenWorkspace={bootstrap.allowOpenWorkspace}
-            preferDirectoryBrowser
-            supportsEmbeddedBrowser={false}
-            allowRemoteWorkspace={false}
-          />
-        </ZCodeIntlProvider>
-      </AppErrorBoundary>,
-    );
-  } catch (error) {
-    renderWebBootstrapError(error);
-  }
+  const platform = createWebPlatform();
+  document.title = "ZCode - Web + Server";
+  // 连接与断线自愈都在 WebAppRoot 内（覆盖层 + 退避重连 + 重连后重新挂载应用）；
+  // 入口只负责路由、平台实现与启动期错误屏。
+  root.render(<WebAppRoot bootstrap={bootstrap} platform={platform} />);
 }
 
 void bootstrapWebApp();

@@ -522,7 +522,12 @@ function matchesRoutePolicy(entry: RoutePolicyEntry, pathname: string): boolean 
  * 但鉴权口径应当 fail-closed（/api 是 API 命名空间本身，不该被静态兜底接走）。
  */
 function isTokenProtectedPath(pathname: string): boolean {
-  return pathname === "/ws" || pathname.startsWith("/ws/") || pathname.startsWith("/api/");
+  return (
+    pathname === "/ws" ||
+    pathname === "/api" ||
+    pathname.startsWith("/ws/") ||
+    pathname.startsWith("/api/")
+  );
 }
 
 /**
