@@ -40,11 +40,26 @@ export function matchesRef(app, appRef) {
   return typeof app.name === "string" && app.name.toLowerCase() === name.toLowerCase();
 }
 
+/** 驱动窗口行 → 几何矩形。Windows 构建把 x/y/width/height 嵌在 `bounds` 里（Linux 是顶层字段），两种形态都接。 */
+export function windowRect(w) {
+  const b = w?.bounds;
+  if (b && typeof b === "object") {
+    return {
+      x: Number(b.x),
+      y: Number(b.y),
+      width: Number(b.width),
+      height: Number(b.height),
+    };
+  }
+  return { x: Number(w?.x), y: Number(w?.y), width: Number(w?.width), height: Number(w?.height) };
+}
+
 /** 驱动窗口行 → 只保留真正可定位的窗口。 */
 export function usableWindows(windows) {
-  return (Array.isArray(windows) ? windows : []).filter(
-    (w) => Number(w.width) >= MIN_WINDOW_EDGE_PX && Number(w.height) >= MIN_WINDOW_EDGE_PX,
-  );
+  return (Array.isArray(windows) ? windows : []).filter((w) => {
+    const rect = windowRect(w);
+    return rect.width >= MIN_WINDOW_EDGE_PX && rect.height >= MIN_WINDOW_EDGE_PX;
+  });
 }
 
 /**
@@ -55,7 +70,11 @@ export function usableWindows(windows) {
  */
 export function pickWindow(windows, windowId) {
   if (windowId !== undefined) return windows.find((w) => w.window_id === windowId);
-  return windows.slice().sort((a, b) => b.width * b.height - a.width * a.height)[0];
+  const area = (w) => {
+    const rect = windowRect(w);
+    return rect.width * rect.height;
+  };
+  return windows.slice().sort((a, b) => area(b) - area(a))[0];
 }
 
 /** 驱动元素行 → 模型可见的 AXElement，并保留 element_token 供动作解析。 */

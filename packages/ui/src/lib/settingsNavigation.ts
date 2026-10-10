@@ -42,7 +42,9 @@ const HIDDEN_SETTINGS_SECTIONS = new Set<SettingsSectionId>([
   // 工作区搜索（.zcodeignore）设置入口先隐藏：规则文件仍生效并可手动编辑，
   // 编辑页代码保留，放开时从这里移除即可。
   "workspaceFileSearch",
-  "computerUse",
+  // computerUse：官方按灰度投放隐藏该区块（闭源产品由服务端裁决放出）。
+  // 我们的源码构建已把运行时做实（CE 驱动凭据回落），这里常驻放出，
+  // 否则用户没有任何入口启用电脑控制。
 ]);
 
 interface SettingsSectionIntentEventDetail {

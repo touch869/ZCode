@@ -97,6 +97,12 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     defaultEnabled: true,
     name: OFFICIAL_NODE_REPL_HOST_PLUGIN_NAME,
     requiredSeedPaths: OFFICIAL_NODE_REPL_HOST_REQUIRED_SEED_PATHS,
+    // Computer Use 的开源驱动（@trycua/cua-driver 及 @ubjs 平台原生包）以
+    // node-repl-host 包根直属 node_modules 的形态随包携带（见 desktop
+    // scripts/cua-driver-package-assets.mjs）。node_repl MCP server 从插件缓存运行，
+    // 缓存 seed 不带 node_modules 时 isCuaDriverResolvable() 恒 false，电脑控制
+    // 「装好了但用不了」。官方基线无此依赖（占位时代无驱动），故此处需显式放行。
+    runtimeTopLevelPaths: ["node_modules"],
     rootCandidates: [
       "packages/node-repl-host",
       "../node-repl-host",
