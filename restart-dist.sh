@@ -150,6 +150,13 @@ fi
 SETUP_EXE=$(ls -t "$DESKTOP"/dist/*.exe 2>/dev/null | head -1)
 [ -n "$SETUP_EXE" ] && echo "  安装版: $SETUP_EXE"
 
+# 4.5) 官方插件缓存同步：此刻进程已死、零句柄，把 glm 树插件内容直接刷进
+#      ~/.zcode 缓存（node_repl 实际运行位置）。否则 seed 在 Windows 上偶发
+#      静默降级会让缓存停留在旧 bundle（10-13 CUA 全盲的第五层根因）。
+#      失败只告警不回滚——部署本身已成功。
+step "同步官方插件缓存（node-repl-host 等）"
+node "$REPO/sync-plugin-cache.mjs" || echo "  ⚠ 缓存同步失败（不阻断部署）"
+
 # 5) 拉起 + 健康检查
 step "拉起新包"
 launch
