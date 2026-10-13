@@ -73,7 +73,6 @@ import type {
   WorkflowRunListItem,
   WorkspaceHookPolicy,
   PendingInputEditLock,
-  ExecutionShellSelection,
   SessionTitleSource,
 } from "@zcode/contracts";
 import type {
