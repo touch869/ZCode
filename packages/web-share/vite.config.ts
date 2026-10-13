@@ -35,7 +35,10 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": resolve(REPO_ROOT, "packages/ui/src"),
-        "@zcode/shared": resolve(REPO_ROOT, "packages/shared/src/index.ts"),
+        // 不能给 @zcode/shared 配裸前缀别名：Vite 前缀匹配会把 "@zcode/shared/mcp-apps"
+        // 这类子路径导入改写成 ".../src/index.ts/mcp-apps" 而构建失败。bare 导入与
+        // 子路径导入都交给 workspace 依赖解析（web-share 已依赖 @zcode/shared，
+        // exports 全部指向 src，语义一致）。
         // Share 镜像不安装 @zcode/ui（它会带入 services/rpc 闭包），子路径导入必须显式指向源码。
         "@zcode/ui/useTheme": resolve(REPO_ROOT, "packages/ui/src/useTheme.ts"),
         "@zcode/ui/conversation-share-readonly": resolve(
