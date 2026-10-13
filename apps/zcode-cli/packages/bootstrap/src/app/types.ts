@@ -67,7 +67,6 @@ import type {
   WorkflowEvent,
   WorkflowRunListItem,
   WorkspaceHookPolicy,
-  ExecutionShellSelection,
   SessionTitleSource,
 } from "@zcode/contracts";
 import type {
