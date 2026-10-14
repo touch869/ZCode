@@ -140,6 +140,10 @@ export const OFFICIAL_PLUGIN_DEFINITIONS: readonly OfficialPluginDefinition[] = 
     defaultEnabled: true,
     name: OFFICIAL_NODE_REPL_HOST_PLUGIN_NAME,
     requiredSeedPaths: OFFICIAL_NODE_REPL_HOST_REQUIRED_SEED_PATHS,
+    // relay-official：node_repl 宿主的 CUA 运行时在进程内加载 @trycua/cua-driver
+    // （esbuild 无法内联的原生包），按 node_modules 形态随插件携带进官方缓存——
+    // 与官方 zcode-cua-plugin 携带 Sharp 闭包同一机制（缺它时 seed 会整棵裁掉）。
+    runtimeTopLevelPaths: ["node_modules"],
     rootCandidates: [
       "packages/node-repl-host",
       "../node-repl-host",

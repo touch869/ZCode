@@ -29,6 +29,10 @@ export interface ComputerUseRuntimeOptions {
   refreshMarkerPath?: string;
   ensureBrokerAvailable?: () => Promise<void>;
   env?: Record<string, string | undefined>;
+  /** relay-official: "open-source"(默认,进程内 @trycua 驱动) | "disabled"(placeholder fail-closed)。 */
+  driver?: "open-source" | "disabled";
+  /** 仅测试:注入假驱动实现。 */
+  loadDriver?: (platform?: NodeJS.Platform) => Promise<unknown>;
 }
 
 export declare function createComputerUseRuntime(

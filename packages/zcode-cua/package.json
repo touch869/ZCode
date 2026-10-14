@@ -11,6 +11,46 @@
       "types": "./index.d.ts",
       "import": "./index.js"
     },
+    "./broker": {
+      "types": "./broker.d.ts",
+      "import": "./broker.js"
+    },
+    "./broker/helperConstants": {
+      "types": "./broker-helper-constants.d.ts",
+      "import": "./broker-helper-constants.js"
+    },
+    "./broker/helperHealth": {
+      "types": "./broker-helper-health.d.ts",
+      "import": "./broker-helper-health.js"
+    },
+    "./broker/ports": {
+      "types": "./broker-ports.d.ts",
+      "import": "./broker-ports.js"
+    },
+    "./broker/server": {
+      "types": "./broker-server.d.ts",
+      "import": "./broker-server.js"
+    },
+    "./broker/socketPath": {
+      "types": "./broker-socket-path.d.ts",
+      "import": "./broker-socket-path.js"
+    },
+    "./cua-driver-actions": {
+      "types": "./cua-driver-actions.d.ts",
+      "import": "./cua-driver-actions.js"
+    },
+    "./cua-driver-errors": {
+      "types": "./cua-driver-errors.d.ts",
+      "import": "./cua-driver-errors.js"
+    },
+    "./cua-driver-runtime": {
+      "types": "./cua-driver-runtime.d.ts",
+      "import": "./cua-driver-runtime.js"
+    },
+    "./cua-driver-targets": {
+      "types": "./cua-driver-targets.d.ts",
+      "import": "./cua-driver-targets.js"
+    },
     "./frame-contract": {
       "types": "./frame-contract.d.ts",
       "import": "./frame-contract.js"
@@ -18,10 +58,6 @@
     "./host-display-contract": {
       "types": "./host-display-contract.d.ts",
       "import": "./host-display-contract.js"
-    },
-    "./request-access-contract": {
-      "types": "./request-access-contract.d.ts",
-      "import": "./request-access-contract.js"
     },
     "./pip-session": {
       "types": "./pip-session.d.ts",
@@ -31,29 +67,12 @@
       "types": "./pip-session-node.d.ts",
       "import": "./pip-session-node.js"
     },
-    "./broker": {
-      "types": "./broker.d.ts",
-      "import": "./broker.js"
-    },
-    "./broker/server": {
-      "types": "./broker-server.d.ts",
-      "import": "./broker-server.js"
-    },
-    "./broker/ports": {
-      "types": "./broker-ports.d.ts",
-      "import": "./broker-ports.js"
-    },
-    "./broker/socketPath": {
-      "types": "./broker-socket-path.d.ts",
-      "import": "./broker-socket-path.js"
-    },
-    "./broker/helperConstants": {
-      "types": "./broker-helper-constants.d.ts",
-      "import": "./broker-helper-constants.js"
-    },
-    "./broker/helperHealth": {
-      "types": "./broker-helper-health.d.ts",
-      "import": "./broker-helper-health.js"
+    "./request-access-contract": {
+      "types": "./request-access-contract.d.ts",
+      "import": "./request-access-contract.js"
     }
+  },
+  "dependencies": {
+    "@trycua/cua-driver": "0.28.2"
   }
 }
