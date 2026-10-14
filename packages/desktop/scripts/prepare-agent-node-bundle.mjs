@@ -23,6 +23,7 @@ import {
   stageSharpIntoBundledAgents,
 } from "./sharp-package-assets.mjs";
 import { stageKoffiIntoBundledAgents } from "./koffi-package-assets.mjs";
+import { stageCuaDriverRuntime } from "./cua-driver-package-assets.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(scriptDir, "..");
@@ -499,3 +500,6 @@ stageOfficialPlugins();
 stageBundledSkillPack();
 stageKoffiForCuaPlugin();
 stageSharpForNodeReplPlugin();
+// relay-official：@trycua 开源 CUA 驱动闭包进 node-repl-host 插件 node_modules。
+// 必须在 stageOfficialPlugins/stageSharp* 之后：它们可能重建插件目录，先放会被清掉。
+stageCuaDriverRuntime();
