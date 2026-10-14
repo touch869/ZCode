@@ -2401,10 +2401,14 @@ export function createLocalServices(options: {
               hostPid: process.pid,
             });
           } else {
-            cuaProductHelperEnv = {
-              [BROKER_UNAVAILABLE_ENV]:
-                "broker_unavailable: windows helper recipe could not be resolved",
-            };
+            // relay-official：官方 Windows Helper 的闭源运行时包（resources/tools/cua-helper）
+            // 不随开源仓分发，自建包里 recipe 必然解析失败。本线的 Computer Use 由
+            // node_repl 插件宿主进程内的开源 @trycua 驱动提供（@zcode/zcode-cua 的
+            // createComputerUseRuntime），只消费 socket+authority 凭据组、不依赖 Helper
+            // 进程，因此保留已铸造的 env 而不是降级 UNAVAILABLE——降级会让官方
+            // node_repl 桥把 Computer Use 判为不可用。驱动缺失时运行时会给出
+            // 明确的错误信封，可见可诊断。
+            cuaProductHelperEnv["ZCODE_CUA_WIN_OPEN_DRIVER"] = "1";
           }
         }
       }
