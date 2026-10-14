@@ -50,18 +50,6 @@
       "types": "./broker.d.ts",
       "import": "./broker.js"
     },
-    "./broker/server": {
-      "types": "./broker-server.d.ts",
-      "import": "./broker-server.js"
-    },
-    "./broker/ports": {
-      "types": "./broker-ports.d.ts",
-      "import": "./broker-ports.js"
-    },
-    "./broker/socketPath": {
-      "types": "./broker-socket-path.d.ts",
-      "import": "./broker-socket-path.js"
-    },
     "./broker/helperConstants": {
       "types": "./broker-helper-constants.d.ts",
       "import": "./broker-helper-constants.js"
@@ -69,13 +57,25 @@
     "./broker/helperHealth": {
       "types": "./broker-helper-health.d.ts",
       "import": "./broker-helper-health.js"
+    },
+    "./broker/ports": {
+      "types": "./broker-ports.d.ts",
+      "import": "./broker-ports.js"
+    },
+    "./broker/server": {
+      "types": "./broker-server.d.ts",
+      "import": "./broker-server.js"
+    },
+    "./broker/socketPath": {
+      "types": "./broker-socket-path.d.ts",
+      "import": "./broker-socket-path.js"
     }
   },
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1"
-  },
-  "zcodeCuaPlaceholder": true
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@trycua/cua-driver": "0.28.2"
+  }
 }
