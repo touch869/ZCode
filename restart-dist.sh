@@ -167,6 +167,19 @@ if wait_health; then
   else
     step "✓ 新包已就绪（首次运行，本次无备份），安装版在 dist/ 根"
   fi
+  # 6) 终态验证与启动期修复：app 启动会触发插件 seed，存在把缓存写成旧产物的
+  #    先例（tsc 风格 bundle 覆盖，10-15 第八坑）。先等启动尘埃落定，重刷一遍
+  #    缓存（幂等），再用链路末端验证（运行实例/缓存逐字节/驱动/宿主新鲜度）
+  #    收口——任何红项都直接指明断链环节，不再依赖"进程活着"这种假绿信号。
+  step "启动后复核（等 25s → 重刷缓存 → 终态验证）"
+  sleep 25
+  node "$REPO/sync-plugin-cache.mjs" >/dev/null 2>&1 || echo "  ⚠ 缓存重刷失败（不阻断）"
+  if node "$REPO/verify-cua-deploy.mjs" --fix; then
+    step "✓ 部署链路终态全绿"
+  else
+    echo "  ⚠ 终态验证有红项（见上）——包本身已部署成功，属缓存/宿主层问题，可重跑"
+    echo "  verify-cua-deploy.mjs --fix 或人工介入。不再自动回滚。"
+  fi
   exit 0
 fi
 
