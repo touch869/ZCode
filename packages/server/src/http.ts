@@ -43,7 +43,11 @@ import {
   type ServerRemoteInfo,
   type ServerRemoteWorkspaceInfo,
 } from "@zcode/shared";
-import { connectRemote, createRemoteBackend, type RemoteConnection } from "./remote/index.js";
+import {
+  connectRemote,
+  createRemoteBackend,
+  type RemoteConnection,
+} from "./remote/index.js";
 import { createHostCapabilityStore } from "./hostCapability.js";
 import {
   buildSecurityHeaders,
@@ -61,7 +65,11 @@ import {
   type AuthThrottle,
   type TrustedProxyRange,
 } from "./authThrottle.js";
-import { buildTrustedHostEntries, evaluateHost, type TrustedHostEntry } from "./hostAllowlist.js";
+import {
+  buildTrustedHostEntries,
+  evaluateHost,
+  type TrustedHostEntry,
+} from "./hostAllowlist.js";
 import { createAuditLog, type AuditLog } from "./auditLog.js";
 
 function wrapWebSocket(ws: WebSocket): ISocket {
@@ -135,7 +143,10 @@ function setupChannelServer(
   // 注意：**不写令牌**，只写标签；不写查询串（`?token=` 会进浏览器历史，进审计等于多一处落盘）。
   const connectionId = randomUUID();
   const startedAt = Date.now();
-  const role = clientMode === "desktop-continuous" ? "trusted-host-relay" : "terminal-client";
+  const role =
+    clientMode === "desktop-continuous"
+      ? "trusted-host-relay"
+      : "terminal-client";
   if (auditContext) {
     auditContext.activeConnections.set(connectionId, {
       role,
@@ -150,7 +161,9 @@ function setupChannelServer(
       connectionId,
       path: auditContext.path,
       authenticated: auditContext.authenticated,
-      ...(auditContext.tokenLabel ? { tokenLabel: auditContext.tokenLabel } : {}),
+      ...(auditContext.tokenLabel
+        ? { tokenLabel: auditContext.tokenLabel }
+        : {}),
     });
   }
   const protocol = new SocketProtocol(socket);
@@ -159,16 +172,26 @@ function setupChannelServer(
   const server = new LoggingChannelServer(rawServer, log);
   const agentService = services.getOptional(IZCodeAgentService);
   const reverseClient =
-    clientMode === "desktop-continuous" && resourcePeers ? new ChannelClient(protocol) : undefined;
+    clientMode === "desktop-continuous" && resourcePeers
+      ? new ChannelClient(protocol)
+      : undefined;
   const peer = reverseClient
-    ? resourcePeers?.attach(reverseClient.getChannel(TOPIC_RESOURCE_RELAY_CHANNEL))
+    ? resourcePeers?.attach(
+        reverseClient.getChannel(TOPIC_RESOURCE_RELAY_CHANNEL),
+      )
     : undefined;
   const connectionScope = agentService
-    ? createZCodeAgentConnectionScope(peer ? peer.wrapAgent(agentService) : agentService, {
-        connectionId: `server-ws-${randomUUID()}`,
-        clientMode,
-        role: clientMode === "desktop-continuous" ? "trusted-host-relay" : "terminal-client",
-      })
+    ? createZCodeAgentConnectionScope(
+        peer ? peer.wrapAgent(agentService) : agentService,
+        {
+          connectionId: `server-ws-${randomUUID()}`,
+          clientMode,
+          role:
+            clientMode === "desktop-continuous"
+              ? "trusted-host-relay"
+              : "terminal-client",
+        },
+      )
     : undefined;
   const overrides = new Map<string, unknown>();
   if (connectionScope) {
@@ -200,7 +223,9 @@ function setupChannelServer(
         path: auditContext.path,
         authenticated: auditContext.authenticated,
         durationMs: Date.now() - startedAt,
-        ...(auditContext.tokenLabel ? { tokenLabel: auditContext.tokenLabel } : {}),
+        ...(auditContext.tokenLabel
+          ? { tokenLabel: auditContext.tokenLabel }
+          : {}),
       });
     }
     void connectionScope?.dispose();
@@ -270,15 +295,21 @@ function readTrimmedEnv(name: string): string | undefined {
 
 function resolveServerId(options: HttpServerOptions): string {
   return (
-    options.serverId?.trim() || readTrimmedEnv("ZCODE_SERVER_ID") || hostname() || "zcode-server"
+    options.serverId?.trim() ||
+    readTrimmedEnv("ZCODE_SERVER_ID") ||
+    hostname() ||
+    "zcode-server"
   );
 }
 
-function resolveServerWorkspaces(options: HttpServerOptions): ServerRemoteWorkspaceInfo[] {
+function resolveServerWorkspaces(
+  options: HttpServerOptions,
+): ServerRemoteWorkspaceInfo[] {
   if (options.workspaces) {
     return options.workspaces;
   }
-  const workspacePath = readTrimmedEnv("ZCODE_SERVER_WORKSPACE") || process.cwd();
+  const workspacePath =
+    readTrimmedEnv("ZCODE_SERVER_WORKSPACE") || process.cwd();
   return [
     {
       path: workspacePath,
@@ -295,7 +326,8 @@ function createServerInfo(options: HttpServerOptions): ServerRemoteInfo {
       : {}),
     version: ZCODE_VERSION,
     protocolVersion: SERVER_REMOTE_PROTOCOL_VERSION,
-    authRequired: options.authRequired ?? Boolean(readTrimmedEnv("ZCODE_SERVER_TOKEN")),
+    authRequired:
+      options.authRequired ?? Boolean(readTrimmedEnv("ZCODE_SERVER_TOKEN")),
     workspaces: resolveServerWorkspaces(options),
     capabilities: {
       desktopContinuous: true,
@@ -375,7 +407,8 @@ function buildLiteTokenCookie(token: string, secure: boolean): string {
 export function isNonLoopbackAddress(address: string | undefined): boolean {
   const value = address?.trim().toLowerCase();
   if (!value) return false;
-  if (value === "localhost" || value === "::1" || value === "[::1]") return false;
+  if (value === "localhost" || value === "::1" || value === "[::1]")
+    return false;
   if (value.startsWith("127.")) return false;
   if (value.startsWith("::ffff:127.")) return false;
   return true;
@@ -421,7 +454,9 @@ export function buildPlainHttpPeerWarning(params: {
   if (params.secure) return null;
   if (!isNonLoopbackAddress(params.remoteAddress)) return null;
   return [
-    "暴露面提醒：本会话首次出现来自非回环对端（" + params.remoteAddress + "）的明文 http 请求。",
+    "暴露面提醒：本会话首次出现来自非回环对端（" +
+      params.remoteAddress +
+      "）的明文 http 请求。",
     "  · 本次会话下发的 token cookie 将不带 Secure，同网段可嗅探；请确认你处在可信局域网。",
     "  · 需要跨网络访问时，请走 TLS 终结的反向代理或隧道，并透传 X-Forwarded-Proto: https。",
   ].join("\n");
@@ -438,7 +473,9 @@ function resolvePeerAddress(
   c: Context,
   trustedProxies: readonly TrustedProxyRange[],
 ): string | undefined {
-  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+  const env = c.env as
+    | { incoming?: { socket?: { remoteAddress?: string } } }
+    | undefined;
   return resolveClientAddress({
     socketAddress: env?.incoming?.socket?.remoteAddress ?? undefined,
     forwardedFor: c.req.header("x-forwarded-for"),
@@ -464,7 +501,9 @@ function hasValidLiteToken(c: Context, source: AuthTokenSource): boolean {
     c.header("Set-Cookie", buildLiteTokenCookie(candidate, isSecureRequest(c)));
     return true;
   }
-  return source.verify(parseCookieHeader(c.req.header("cookie")).get(zcodeLiteTokenCookieName));
+  return source.verify(
+    parseCookieHeader(c.req.header("cookie")).get(zcodeLiteTokenCookieName),
+  );
 }
 
 /**
@@ -489,20 +528,55 @@ export interface RoutePolicyEntry {
 }
 
 export const ROUTE_POLICY: readonly RoutePolicyEntry[] = [
-  { path: "/api/server-info", policy: "protected", note: "泄露主机名/版本/工作区绝对路径" },
+  {
+    path: "/api/server-info",
+    policy: "protected",
+    note: "泄露主机名/版本/工作区绝对路径",
+  },
   {
     path: "/api/rpc-host-capability",
     policy: "protected",
     note: "签发 trusted-host ticket（提权面）",
   },
-  { path: "/api/connect-remote", policy: "protected", note: "让服务端出网建连接（SSRF 面）" },
-  { path: "/api", prefix: true, policy: "protected", note: "API 命名空间整体受保护" },
-  { path: "/ws", policy: "protected", note: "agent 级 RPC 通道（terminal-client 角色）" },
-  { path: "/ws/host", policy: "protected", note: "需一次性 ticket，拿 desktop-continuous 角色" },
-  { path: "/ws/remote/:id", prefix: true, policy: "protected", note: "远程连接桥接（一次性 id）" },
-  { path: "/", policy: "public", note: "SPA 壳：浏览器必须先拿到它才能进入鉴权流程" },
+  {
+    path: "/api/connect-remote",
+    policy: "protected",
+    note: "让服务端出网建连接（SSRF 面）",
+  },
+  {
+    path: "/api",
+    prefix: true,
+    policy: "protected",
+    note: "API 命名空间整体受保护",
+  },
+  {
+    path: "/ws",
+    policy: "protected",
+    note: "agent 级 RPC 通道（terminal-client 角色）",
+  },
+  {
+    path: "/ws/host",
+    policy: "protected",
+    note: "需一次性 ticket，拿 desktop-continuous 角色",
+  },
+  {
+    path: "/ws/remote/:id",
+    prefix: true,
+    policy: "protected",
+    note: "远程连接桥接（一次性 id）",
+  },
+  {
+    path: "/",
+    policy: "public",
+    note: "SPA 壳：浏览器必须先拿到它才能进入鉴权流程",
+  },
   { path: "/index.html", policy: "public", note: "同上" },
-  { path: "/share/**", prefix: true, policy: "public", note: "会话分享落地页（分享码本身即凭据）" },
+  {
+    path: "/share/**",
+    prefix: true,
+    policy: "public",
+    note: "会话分享落地页（分享码本身即凭据）",
+  },
   {
     path: "/assets/**",
     prefix: true,
@@ -511,10 +585,15 @@ export const ROUTE_POLICY: readonly RoutePolicyEntry[] = [
   },
 ];
 
-function matchesRoutePolicy(entry: RoutePolicyEntry, pathname: string): boolean {
+function matchesRoutePolicy(
+  entry: RoutePolicyEntry,
+  pathname: string,
+): boolean {
   if (entry.prefix) {
     // `/api` 前缀同时要覆盖精确的 `/api` 本身（历史上这条曾落到 SPA fallback）。
-    const base = entry.path.endsWith("/") ? entry.path.slice(0, -1) : entry.path;
+    const base = entry.path.endsWith("/")
+      ? entry.path.slice(0, -1)
+      : entry.path;
     if (base.endsWith("/**")) {
       return pathname.startsWith(base.slice(0, -3) + "/");
     }
@@ -534,7 +613,12 @@ function matchesRoutePolicy(entry: RoutePolicyEntry, pathname: string): boolean 
  * 但鉴权口径应当 fail-closed（/api 是 API 命名空间本身，不该被静态兜底接走）。
  */
 function isTokenProtectedPath(pathname: string): boolean {
-  return pathname === "/ws" || pathname.startsWith("/ws/") || pathname.startsWith("/api/");
+  return (
+    pathname === "/ws" ||
+    pathname === "/api" ||
+    pathname.startsWith("/ws/") ||
+    pathname.startsWith("/api/")
+  );
 }
 
 /**
@@ -551,7 +635,11 @@ export function assertRoutePolicyEnforced(
     }
     // 前缀条目用一个具体样例路径探针（`/api` 前缀要连同精确形式一起验）。
     const probes = entry.prefix
-      ? [entry.path.endsWith("/**") ? entry.path.slice(0, -2) + "sample" : entry.path]
+      ? [
+          entry.path.endsWith("/**")
+            ? entry.path.slice(0, -2) + "sample"
+            : entry.path,
+        ]
       : [entry.path.replace(":id", "sample-id")];
     for (const probe of probes) {
       if (!isProtected(probe)) {
@@ -584,7 +672,10 @@ async function resolveStaticFile(
 ): Promise<string | null> {
   const root = resolve(staticRoot);
   const normalizedPathname = pathname === "/" ? "/index.html" : pathname;
-  const relativePath = decodeURIComponent(normalizedPathname).replace(/^\/+/, "");
+  const relativePath = decodeURIComponent(normalizedPathname).replace(
+    /^\/+/,
+    "",
+  );
   let candidate = resolve(root, relativePath);
   if (!isInsideDirectory(root, candidate)) {
     return null;
@@ -620,7 +711,10 @@ async function resolveStaticFile(
 }
 
 function staticContentType(filePath: string): string {
-  return staticMimeTypes[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+  return (
+    staticMimeTypes[extname(filePath).toLowerCase()] ??
+    "application/octet-stream"
+  );
 }
 
 /**
@@ -651,13 +745,19 @@ export const DEFAULT_MAX_CONCURRENT_CONNECTIONS = 32;
 
 function normalizeListenHost(host: string): string {
   const trimmed = host.trim().toLowerCase();
-  return trimmed.startsWith("[") && trimmed.endsWith("]") ? trimmed.slice(1, -1) : trimmed;
+  return trimmed.startsWith("[") && trimmed.endsWith("]")
+    ? trimmed.slice(1, -1)
+    : trimmed;
 }
 
 /** 与 packages/zcode-server-cli/src/server-core/http.ts 的 isLoopbackHost 保持同一判定口径。 */
 export function isLoopbackHost(host: string): boolean {
   const normalized = normalizeListenHost(host);
-  return normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost";
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "localhost"
+  );
 }
 
 /**
@@ -678,7 +778,8 @@ export function assertListenSecurity(options: {
   // fail-closed：非回环必须有**可用**的令牌来源。
   // 注意区分两种情况：没配（下面给三条做法）与配了但为空（文件损坏/空文件 ⇒ 必须显式拒绝，
   // 否则会静默退化成「无鉴权的对外监听」，那正是本函数要防的那一档）。
-  const hasUsableSource = options.authSourceEnabled ?? Boolean(options.authToken?.trim());
+  const hasUsableSource =
+    options.authSourceEnabled ?? Boolean(options.authToken?.trim());
   if (isLoopbackHost(options.host) || hasUsableSource) {
     return;
   }
@@ -732,7 +833,8 @@ export function createHttpServer(
         enabled: true,
         verify: (candidate) => candidate === explicitToken,
         snapshot: () => ({ count: 1, labels: ["<env>"] }),
-        labelFor: (candidate) => (candidate === explicitToken ? "<env>" : undefined),
+        labelFor: (candidate) =>
+          candidate === explicitToken ? "<env>" : undefined,
       }
     : undefined;
   const tokenSource = options.tokenSource ?? explicitTokenSource;
@@ -756,7 +858,9 @@ export function createHttpServer(
     });
   const throttle =
     options.throttle ??
-    createAuthThrottle({ warn: (address, message) => warn(message + "（" + address + "）") });
+    createAuthThrottle({
+      warn: (address, message) => warn(message + "（" + address + "）"),
+    });
   // 审计日志（B1）：与 warn 分开的一条结构化流（一行一条 JSON，便于 grep/journald 采集）。
   const audit = options.audit ?? createAuditLog();
   if (!options.audit) {
@@ -866,7 +970,12 @@ export function createHttpServer(
   // 用 WeakMap 而不是可变闭包变量：闭包变量会在并发请求间串味（同一个中间件实例服务所有请求）。
   const perRequestAuth = new WeakMap<
     Context,
-    { peer?: string; failureRecorded: boolean; authenticated?: boolean; tokenLabel?: string }
+    {
+      peer?: string;
+      failureRecorded: boolean;
+      authenticated?: boolean;
+      tokenLabel?: string;
+    }
   >();
   if (tokenSource?.enabled) {
     app.use("*", async (c, next) => {
@@ -900,7 +1009,9 @@ export function createHttpServer(
           validToken && tokenSource
             ? tokenSource.labelFor(
                 new URL(c.req.url).searchParams.get("token") ??
-                  parseCookieHeader(c.req.header("cookie")).get(zcodeLiteTokenCookieName),
+                  parseCookieHeader(c.req.header("cookie")).get(
+                    zcodeLiteTokenCookieName,
+                  ),
               )
             : undefined;
         perRequestAuth.set(c, {
@@ -914,14 +1025,19 @@ export function createHttpServer(
       }
       // ① 鉴权失败：计数 + 可观测（修改前这条链路上没有任何失败记录，入侵完全静默）。
       const banned = throttle.recordFailure(peer);
-      perRequestAuth.set(c, { ...(peer ? { peer } : {}), failureRecorded: true });
+      perRequestAuth.set(c, {
+        ...(peer ? { peer } : {}),
+        failureRecorded: true,
+      });
       // 审计：鉴权失败（**不写令牌、不写查询串** —— 只写路径与解析后的对端地址）。
       audit.record({
         kind: "audit:auth-failure",
         peer: peer ?? "unknown",
         method: c.req.method,
         path: pathname,
-        reason: isTokenProtectedPath(pathname) ? "令牌无效或缺失" : "未授权路径",
+        reason: isTokenProtectedPath(pathname)
+          ? "令牌无效或缺失"
+          : "未授权路径",
         ...(banned ? {} : {}),
       });
       if (banned) {
@@ -935,7 +1051,9 @@ export function createHttpServer(
       }
       warn(
         "鉴权失败（" +
-          (banned ? "已触发封禁" : "累计 " + String(throttle.failureCount(peer ?? "")) + " 次") +
+          (banned
+            ? "已触发封禁"
+            : "累计 " + String(throttle.failureCount(peer ?? "")) + " 次") +
           "）：" +
           c.req.method +
           " " +
@@ -971,7 +1089,9 @@ export function createHttpServer(
    */
   const buildConnectionAuditContext = (c: Context): ConnectionAuditContext => {
     const requestUrl = new URL(c.req.url);
-    const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+    const env = c.env as
+      | { incoming?: { socket?: { remoteAddress?: string } } }
+      | undefined;
     const peer =
       resolveClientAddress({
         socketAddress: env?.incoming?.socket?.remoteAddress,
@@ -998,7 +1118,14 @@ export function createHttpServer(
       const auditContext = buildConnectionAuditContext(c);
       return {
         onOpen(_event, ws) {
-          setupChannelServer(ws.raw as WebSocket, services, "web-remote-replayable", auditContext);
+          setupChannelServer(
+            ws.raw as WebSocket,
+            services,
+            "web-remote-replayable",
+            // resourcePeers 只属于 desktop-continuous（reverse 桥接）；审计上下文是第 5 参。
+            undefined,
+            auditContext,
+          );
         },
       };
     }),
@@ -1025,7 +1152,9 @@ export function createHttpServer(
       // 只在令牌层没记过时补记，避免同一请求被计两次。
       const auth = perRequestAuth.get(c);
       if (tokenSource?.enabled && !auth?.failureRecorded) {
-        throttle.recordFailure(auth?.peer ?? resolvePeerAddress(c, trustedProxies));
+        throttle.recordFailure(
+          auth?.peer ?? resolvePeerAddress(c, trustedProxies),
+        );
       }
       return c.json({ error: "Invalid or expired host capability" }, 401);
     }
@@ -1038,7 +1167,10 @@ export function createHttpServer(
     const rawBody = await c.req.json();
     const parsedBody = remoteTargetSchema.safeParse(rawBody);
     if (!parsedBody.success) {
-      return c.json({ error: `Invalid request body: ${formatZodError(parsedBody.error)}` }, 400);
+      return c.json(
+        { error: `Invalid request body: ${formatZodError(parsedBody.error)}` },
+        400,
+      );
     }
     const body = parsedBody.data;
 
@@ -1061,7 +1193,10 @@ export function createHttpServer(
       return c.json({ error: `Unsupported provider: ${provider}` }, 400);
     }
     if (provider !== "webhook") {
-      return c.json({ error: `Provider ${provider} does not support HTTP callbacks.` }, 400);
+      return c.json(
+        { error: `Provider ${provider} does not support HTTP callbacks.` },
+        400,
+      );
     }
     const botsService = services.getOptional(IBotsService);
     if (!botsService) {
@@ -1079,12 +1214,17 @@ export function createHttpServer(
     const webhookSecret = c.req.header("x-zcode-bot-secret");
     const botId = c.req.param("botId");
     const result = await botsService.handleProviderCallbackResponse(provider, {
-      ...(typeof rawBody === "object" && rawBody !== null ? rawBody : { payload: rawBody }),
+      ...(typeof rawBody === "object" && rawBody !== null
+        ? rawBody
+        : { payload: rawBody }),
       rawBody: rawBodyText,
       ...(botId ? { botId } : {}),
       ...(webhookSecret ? { webhookSecret } : {}),
     });
-    const responseBody = result.responseBody ?? { ok: result.ok, replies: result.replies };
+    const responseBody = result.responseBody ?? {
+      ok: result.ok,
+      replies: result.replies,
+    };
     if (result.status === 400) {
       return c.json(responseBody, 400);
     }
@@ -1133,6 +1273,7 @@ export function createHttpServer(
             ws.raw as WebSocket,
             remoteServices,
             "web-remote-replayable",
+            undefined,
             auditContext,
           );
         },
@@ -1144,7 +1285,11 @@ export function createHttpServer(
     const staticRoot = options.staticRoot.trim();
     app.get("*", async (c) => {
       const pathname = new URL(c.req.url).pathname;
-      const filePath = await resolveStaticFile(staticRoot, pathname, options.spaFallback ?? true);
+      const filePath = await resolveStaticFile(
+        staticRoot,
+        pathname,
+        options.spaFallback ?? true,
+      );
       if (!filePath) {
         return c.notFound();
       }
@@ -1157,54 +1302,76 @@ export function createHttpServer(
     });
   }
 
-  const server = serve({ fetch: app.fetch, hostname: options.host, port }, () => {
-    const address = server.address();
-    const listenPort = typeof address === "object" && address ? address.port : port;
-    // 打印真实 bind 地址：此前用 options.host 兜底成 "localhost"，
-    // 与「未指定 = 绑所有网卡」的实际行为不符（误导用户以为只在本机可达）。
-    const urlHost = host.includes(":") ? `[${normalizeListenHost(host)}]` : host;
-    log(`http://${urlHost}:${listenPort}`);
-    if (trustedOrigins.length > 0) {
-      log(`cross-site allowlist: ${trustedOrigins.join(", ")}`);
-    }
-    const tokenCount = tokenSource?.snapshot().count ?? 0;
-    log(
-      isLoopbackHost(host)
-        ? `bind=${host} scope=loopback-only token-auth=${tokenSource?.enabled ? "enabled" : "disabled"}`
-        : `bind=${host} scope=non-loopback token-auth=enabled (非回环绑定的 fail-closed 前置检查已通过)
+  const server = serve(
+    // 用算好默认值的 host（DEFAULT_HTTP_LISTEN_HOST），不能用 options.host：未显式指定时
+    // 它是 undefined，@hono/node-server 会绑所有网卡的双栈 `::`，与 assertListenSecurity
+    // 按 127.0.0.1 判定的 loopback-only 口径不一致（对端也会变成 ::ffff: 形态）。
+    { fetch: app.fetch, hostname: host, port },
+    () => {
+      const address = server.address();
+      const listenPort =
+        typeof address === "object" && address ? address.port : port;
+      // 打印真实 bind 地址：此前用 options.host 兜底成 "localhost"，
+      // 与「未指定 = 绑所有网卡」的实际行为不符（误导用户以为只在本机可达）。
+      const urlHost = host.includes(":")
+        ? `[${normalizeListenHost(host)}]`
+        : host;
+      log(`http://${urlHost}:${listenPort}`);
+      if (trustedOrigins.length > 0) {
+        log(`cross-site allowlist: ${trustedOrigins.join(", ")}`);
+      }
+      const tokenCount = tokenSource?.snapshot().count ?? 0;
+      log(
+        isLoopbackHost(host)
+          ? `bind=${host} scope=loopback-only token-auth=${tokenSource?.enabled ? "enabled" : "disabled"}`
+          : `bind=${host} scope=non-loopback token-auth=enabled (非回环绑定的 fail-closed 前置检查已通过)
 `,
-    );
-    if (tokenSource?.enabled && tokenCount > 1) {
-      // 多令牌是「可批量撤销」的前提：打印条数与标签（**绝不打印令牌本身**）便于核对。
-      log(`token source: ${String(tokenCount)} 条（${tokenSource.snapshot().labels.join(", ")}）`);
-    }
-    // 打印生效的 Host 白名单（**这是排障的关键信息**：反代域名没登记时，用户看到 403 却不知道
-    // 该写进哪个变量；启动日志直接给出来）。
-    const bySource = trustedHostEntries.reduce<Record<string, string[]>>((accumulator, entry) => {
-      const list = accumulator[entry.label] ?? [];
-      list.push(entry.port === undefined ? entry.host : entry.host + ":" + String(entry.port));
-      accumulator[entry.label] = list;
-      return accumulator;
-    }, {});
-    log(
-      "trusted hosts: " +
-        Object.entries(bySource)
-          .map(([label, hosts]) => label + "=[" + hosts.join(",") + "]")
-          .join(" "),
-    );
-    if (trustedProxies.length > 0) {
-      log(`trusted proxies: ${String(trustedProxies.length)} 条（采信 X-Forwarded-For）`);
-    } else {
-      // 默认不采信 XFF：运维若把反代配上了却不知道这一点，会看到「限流按反代 IP 计数」的现象。
-      log("trusted proxies: 未配置 ⇒ 不采信 X-Forwarded-For，对端地址一律取 socket");
-    }
-    const exposureWarning = buildNonLoopbackListenWarning({
-      host,
-      port: listenPort,
-      tokenAuth: Boolean(tokenSource?.enabled),
-    });
-    if (exposureWarning) warn(exposureWarning);
-  });
+      );
+      if (tokenSource?.enabled && tokenCount > 1) {
+        // 多令牌是「可批量撤销」的前提：打印条数与标签（**绝不打印令牌本身**）便于核对。
+        log(
+          `token source: ${String(tokenCount)} 条（${tokenSource.snapshot().labels.join(", ")}）`,
+        );
+      }
+      // 打印生效的 Host 白名单（**这是排障的关键信息**：反代域名没登记时，用户看到 403 却不知道
+      // 该写进哪个变量；启动日志直接给出来）。
+      const bySource = trustedHostEntries.reduce<Record<string, string[]>>(
+        (accumulator, entry) => {
+          const list = accumulator[entry.label] ?? [];
+          list.push(
+            entry.port === undefined
+              ? entry.host
+              : entry.host + ":" + String(entry.port),
+          );
+          accumulator[entry.label] = list;
+          return accumulator;
+        },
+        {},
+      );
+      log(
+        "trusted hosts: " +
+          Object.entries(bySource)
+            .map(([label, hosts]) => label + "=[" + hosts.join(",") + "]")
+            .join(" "),
+      );
+      if (trustedProxies.length > 0) {
+        log(
+          `trusted proxies: ${String(trustedProxies.length)} 条（采信 X-Forwarded-For）`,
+        );
+      } else {
+        // 默认不采信 XFF：运维若把反代配上了却不知道这一点，会看到「限流按反代 IP 计数」的现象。
+        log(
+          "trusted proxies: 未配置 ⇒ 不采信 X-Forwarded-For，对端地址一律取 socket",
+        );
+      }
+      const exposureWarning = buildNonLoopbackListenWarning({
+        host,
+        port: listenPort,
+        tokenAuth: Boolean(tokenSource?.enabled),
+      });
+      if (exposureWarning) warn(exposureWarning);
+    },
+  );
 
   // WebSocket 的来源校验必须挂在 **HTTP 升级事件**上，而不是 Hono 中间件里：
   // @hono/node-ws 的升级适配器只取响应状态码、自己拼一条 Content-Length: 0 的响应，
@@ -1218,7 +1385,11 @@ export function createHttpServer(
   // 它会往已 end 的 socket 再写一次响应（实测崩法：ERR_STREAM_WRITE_AFTER_END）。
   // 所以 gate **之后**注册的每个 upgrade 监听器都被包一层「已拒绝就跳过」。
   const rejectedUpgradeSockets = new WeakSet<Duplex>();
-  type UpgradeListener = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  type UpgradeListener = (
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => void;
   const installGuardedUpgradeListener = (listener: UpgradeListener): void => {
     server.on("upgrade", (request, socket, head) => {
       if (rejectedUpgradeSockets.has(socket)) {
@@ -1319,7 +1490,10 @@ export function createHttpServer(
         originHeader: request.headers.origin,
         hostHeader: request.headers.host,
         protocol: "http:",
-        requestUrl: "http://" + (request.headers.host ?? "placeholder") + (request.url ?? "/"),
+        requestUrl:
+          "http://" +
+          (request.headers.host ?? "placeholder") +
+          (request.url ?? "/"),
       },
       trustedOrigins,
     );

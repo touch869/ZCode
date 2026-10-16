@@ -10,7 +10,11 @@ import {
 } from "../src/main/desktopHostProcess.js";
 
 vi.mock("../src/main/databaseStartupRelay.js", () => ({
-  bindDatabaseStartupRelay: (_win: unknown, _child: unknown, startupId: string) => ({
+  bindDatabaseStartupRelay: (
+    _win: unknown,
+    _child: unknown,
+    startupId: string,
+  ) => ({
     receive: vi.fn(),
     startupId,
   }),
@@ -107,7 +111,10 @@ describe("desktopHostProcess CUA operation state routing", () => {
     };
     const init = child.postMessage.mock.calls[0]![0];
     expect(init.databaseStartupId).toEqual(expect.any(String));
-    child.emit("message", { ...event, diagnostic: { ...event.diagnostic, version: 2 } });
+    child.emit("message", {
+      ...event,
+      diagnostic: { ...event.diagnostic, version: 2 },
+    });
     expect(onAgentProcessException).not.toHaveBeenCalled();
     child.emit("message", event);
     expect(onAgentProcessException).toHaveBeenCalledExactlyOnceWith(event);
@@ -199,7 +206,9 @@ describe("desktopHostProcess local media preview authorization", () => {
     });
 
     await vi.waitFor(() => {
-      expect(authorizeLocalMediaPreviewPath).toHaveBeenCalledWith("/linked/video.mp4");
+      expect(authorizeLocalMediaPreviewPath).toHaveBeenCalledWith(
+        "/linked/video.mp4",
+      );
       expect(child.postMessage).toHaveBeenCalledWith({
         type: HostMessageTypes.LocalMediaPreviewPathAuthorizeResult,
         requestId: "preview-request-1",
@@ -254,7 +263,8 @@ describe("desktopHostProcess host 自采资源样本", () => {
     selfHeapProcessResourceSampleSource.sample?.({
       now: 0,
       addRoleSample: () => {},
-      addRoleHeapSample: (role, heapUsedKb) => heapSamples.push([role, heapUsedKb]),
+      addRoleHeapSample: (role, heapUsedKb) =>
+        heapSamples.push([role, heapUsedKb]),
       addAppProcessTotals: () => {},
     });
 
@@ -285,15 +295,23 @@ describe("desktopHostProcess disposeHostProcessAndWait", () => {
     };
     let resolved = false;
 
-    const promise = disposeHostProcessAndWait(child as never, "app-before-quit-1", timers, logger, {
-      forceKillDelayMs: 10_000,
-      waitTimeoutMs: 10_000,
-    }).then(() => {
+    const promise = disposeHostProcessAndWait(
+      child as never,
+      "app-before-quit-1",
+      timers,
+      logger,
+      {
+        forceKillDelayMs: 10_000,
+        waitTimeoutMs: 10_000,
+      },
+    ).then(() => {
       resolved = true;
     });
 
     expect(child.postMessage).toHaveBeenCalledTimes(1);
-    expect(child.postMessage).toHaveBeenCalledWith({ type: HostMessageTypes.Dispose });
+    expect(child.postMessage).toHaveBeenCalledWith({
+      type: HostMessageTypes.Dispose,
+    });
 
     await Promise.resolve();
     expect(resolved).toBe(false);
@@ -314,13 +332,23 @@ describe("desktopHostProcess disposeHostProcessAndWait", () => {
       info: vi.fn(),
       warn: vi.fn(),
     };
-    const firstDispose = disposeHostProcessAndWait(child as never, "first-dispose", timers, logger);
+    const firstDispose = disposeHostProcessAndWait(
+      child as never,
+      "first-dispose",
+      timers,
+      logger,
+    );
 
     child.pid = undefined;
     child.emit("exit", 0);
     await firstDispose;
 
-    await disposeHostProcessAndWait(child as never, "already-exited", timers, logger);
+    await disposeHostProcessAndWait(
+      child as never,
+      "already-exited",
+      timers,
+      logger,
+    );
 
     expect(child.postMessage).toHaveBeenCalledTimes(1);
   });
@@ -392,9 +420,13 @@ describe("desktopHostProcess MCP 资源样本", () => {
   });
 });
 
-it("PRT-010: main 的真实 Host 消息分发即时报告 Bash 完成事实，拒绝非法属性", async () => {
+// 本线已移除 ARMS 遥测客户端（@arms/rum-electron 依赖不存在，见 telemetry 移除提交）；
+// 本用例断言的核心事实就是 sendCustom 上报与载荷脱敏，随链路一并失效。
+it.skip("PRT-010: main 的真实 Host 消息分发即时报告 Bash 完成事实，拒绝非法属性", async () => {
   const { default: armsRum } = await import("@arms/rum-electron");
-  const sendCustom = vi.spyOn(armsRum, "sendCustom").mockImplementation(() => {});
+  const sendCustom = vi
+    .spyOn(armsRum, "sendCustom")
+    .mockImplementation(() => {});
   const { configureDesktopResourceTelemetry } =
     await import("../src/main/desktopResourceTelemetry.js");
   configureDesktopResourceTelemetry({
@@ -434,7 +466,11 @@ it("PRT-010: main 的真实 Host 消息分发即时报告 Bash 完成事实，�
       sample: { ...sample, command: "secret" },
     });
     expect(sendCustom).not.toHaveBeenCalled();
-    child.emit("message", { type: "tool-exec-resource", runtimeSurface: "local", sample });
+    child.emit("message", {
+      type: "tool-exec-resource",
+      runtimeSurface: "local",
+      sample,
+    });
     expect(sendCustom).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         name: "perf_tool_exec_resource",

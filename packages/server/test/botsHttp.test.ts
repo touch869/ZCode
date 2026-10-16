@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AddressInfo } from "node:net";
+import { AddressInfo, type Server } from "node:net";
 import {
   ServiceCollection,
   IBotsService,
@@ -7,6 +7,15 @@ import {
 } from "@zcode/services";
 import { createHttpServer } from "../src/http.js";
 
+// 指定 hostname 时 Node 的 listen 是异步绑定，必须等 listening 事件端口才可用
+//（hostname 为 undefined 的旧路径碰巧同步可见，不要依赖那个怪癖）。
+function waitForAddress(server: Server): Promise<AddressInfo> {
+  return new Promise((resolve) => {
+    if (server.listening) resolve(server.address() as AddressInfo);
+    else
+      server.once("listening", () => resolve(server.address() as AddressInfo));
+  });
+}
 describe("bots HTTP callback", () => {
   const servers: Array<{ close(callback?: (err?: Error) => void): void }> = [];
 
@@ -37,30 +46,35 @@ describe("bots HTTP callback", () => {
         text: "ok",
       },
     ]);
-    const handleProviderCallbackResponse = vi.fn(async (_provider: unknown, payload: unknown) => ({
-      ok: true,
-      replies: await handleProviderCallback("webhook", payload),
-    }));
+    const handleProviderCallbackResponse = vi.fn(
+      async (_provider: unknown, payload: unknown) => ({
+        ok: true,
+        replies: await handleProviderCallback("webhook", payload),
+      }),
+    );
     const services = new ServiceCollection().register(IBotsService, {
       handleProviderCallback,
       handleProviderCallbackResponse,
     } as unknown as BotsService);
     const server = createHttpServer(services, 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/bots/webhook`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-zcode-bot-secret": "secret",
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/bots/webhook`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-zcode-bot-secret": "secret",
+        },
+        body: JSON.stringify({
+          botId: "webhook-1",
+          userId: "user-1",
+          text: "/status",
+        }),
       },
-      body: JSON.stringify({
-        botId: "webhook-1",
-        userId: "user-1",
-        text: "/status",
-      }),
-    });
+    );
 
     await expect(response.json()).resolves.toEqual({
       ok: true,
@@ -90,12 +104,15 @@ describe("bots HTTP callback", () => {
     const services = new ServiceCollection();
     const server = createHttpServer(services, 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/bots/unknown`, {
-      method: "POST",
-      body: "{}",
-    });
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/bots/unknown`,
+      {
+        method: "POST",
+        body: "{}",
+      },
+    );
 
     expect(response.status).toBe(400);
   });
@@ -110,7 +127,7 @@ describe("bots HTTP callback", () => {
     } as unknown as BotsService);
     const server = createHttpServer(services, 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
     const response = await fetch(
       `http://127.0.0.1:${address.port}/api/bots/webhook`,
@@ -125,12 +142,15 @@ describe("bots HTTP callback", () => {
     const services = new ServiceCollection();
     const server = createHttpServer(services, 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/bots/feishu/feishu-1`, {
-      method: "POST",
-      body: "{}",
-    });
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/bots/feishu/feishu-1`,
+      {
+        method: "POST",
+        body: "{}",
+      },
+    );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({

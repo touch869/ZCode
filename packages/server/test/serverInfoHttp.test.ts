@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { AddressInfo } from "node:net";
+import { AddressInfo, type Server } from "node:net";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,6 +7,15 @@ import { ServiceCollection } from "@zcode/services";
 import { SERVER_REMOTE_PROTOCOL_VERSION } from "@zcode/shared";
 import { createHttpServer } from "../src/http.js";
 
+// 指定 hostname 时 Node 的 listen 是异步绑定，必须等 listening 事件端口才可用
+//（hostname 为 undefined 的旧路径碰巧同步可见，不要依赖那个怪癖）。
+function waitForAddress(server: Server): Promise<AddressInfo> {
+  return new Promise((resolve) => {
+    if (server.listening) resolve(server.address() as AddressInfo);
+    else
+      server.once("listening", () => resolve(server.address() as AddressInfo));
+  });
+}
 describe("server info HTTP endpoint", () => {
   const servers: Array<{ close(callback?: (err?: Error) => void): void }> = [];
   const tempDirs: string[] = [];
@@ -27,7 +36,9 @@ describe("server info HTTP endpoint", () => {
       ),
     );
     servers.length = 0;
-    await Promise.all(tempDirs.map((dir) => rm(dir, { force: true, recursive: true })));
+    await Promise.all(
+      tempDirs.map((dir) => rm(dir, { force: true, recursive: true })),
+    );
     tempDirs.length = 0;
   });
 
@@ -43,9 +54,11 @@ describe("server info HTTP endpoint", () => {
       ],
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/server-info`);
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/server-info`,
+    );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
@@ -73,13 +86,15 @@ describe("server info HTTP endpoint", () => {
       authToken: "secret-token",
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
     const rejected = await fetch(`${baseUrl}/api/server-info`);
     expect(rejected.status).toBe(401);
 
-    const accepted = await fetch(`${baseUrl}/api/server-info?token=secret-token`);
+    const accepted = await fetch(
+      `${baseUrl}/api/server-info?token=secret-token`,
+    );
     expect(accepted.status).toBe(200);
     expect(accepted.headers.get("set-cookie")).toContain("zcode_lite_token=");
 
@@ -90,9 +105,12 @@ describe("server info HTTP endpoint", () => {
     });
     expect(cookieAccepted.status).toBe(200);
 
-    const capabilityRejected = await fetch(`${baseUrl}/api/rpc-host-capability`, {
-      method: "POST",
-    });
+    const capabilityRejected = await fetch(
+      `${baseUrl}/api/rpc-host-capability`,
+      {
+        method: "POST",
+      },
+    );
     expect(capabilityRejected.status).toBe(401);
     const capabilityAccepted = await fetch(
       `${baseUrl}/api/rpc-host-capability?token=secret-token`,
@@ -108,7 +126,11 @@ describe("server info HTTP endpoint", () => {
   it("serves static web files with SPA fallback", async () => {
     const staticRoot = await mkdtemp(join(tmpdir(), "zcode-lite-static-"));
     tempDirs.push(staticRoot);
-    await writeFile(join(staticRoot, "index.html"), "<html>lite</html>", "utf8");
+    await writeFile(
+      join(staticRoot, "index.html"),
+      "<html>lite</html>",
+      "utf8",
+    );
     await writeFile(join(staticRoot, "app.js"), "console.log('lite');", "utf8");
 
     const server = createHttpServer(new ServiceCollection(), 0, {
@@ -116,7 +138,7 @@ describe("server info HTTP endpoint", () => {
       spaFallback: true,
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
     const asset = await fetch(`${baseUrl}/app.js`);

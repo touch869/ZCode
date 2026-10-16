@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { WebSocket } from "ws";
 import { ServiceCollection } from "@zcode/services";
 import {
@@ -41,12 +41,17 @@ function captureAudit(): CapturedAudit {
     },
   });
   const parse = (): Record<string, unknown>[] =>
-    lines.map((line) => JSON.parse(line.slice(line.indexOf("{"))) as Record<string, unknown>);
+    lines.map(
+      (line) =>
+        JSON.parse(line.slice(line.indexOf("{"))) as Record<string, unknown>,
+    );
   return {
     audit,
     text: () => lines.join("\n"),
     events: (kind?: string) =>
-      kind === undefined ? parse() : parse().filter((event) => event.kind === kind),
+      kind === undefined
+        ? parse()
+        : parse().filter((event) => event.kind === kind),
   };
 }
 
@@ -57,10 +62,13 @@ async function withServer<T>(
   const server = createHttpServer(new ServiceCollection(), 0, options);
   try {
     if (!server.listening) {
-      await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+      await new Promise<void>((resolve) =>
+        server.once("listening", () => resolve()),
+      );
     }
     const address = server.address();
-    const port = typeof address === "object" && address ? Number(address.port) : 0;
+    const port =
+      typeof address === "object" && address ? Number(address.port) : 0;
     return await run(port);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -109,8 +117,13 @@ function probeWebSocket(
 test("G11：ROUTE_POLICY 的受保护标注与实现一致（启动期断言不抛错）", () => {
   assert.doesNotThrow(() => assertRoutePolicyEnforced());
   // 每条受保护路由都必须真的被鉴权覆盖 —— 这是"防未来新增路由静默漂移"的断言本体。
-  const protectedEntries = ROUTE_POLICY.filter((entry) => entry.policy === "protected");
-  assert.ok(protectedEntries.length >= 5, "受保护路由不应少于 5 条（漏标会变红）");
+  const protectedEntries = ROUTE_POLICY.filter(
+    (entry) => entry.policy === "protected",
+  );
+  assert.ok(
+    protectedEntries.length >= 5,
+    "受保护路由不应少于 5 条（漏标会变红）",
+  );
   for (const entry of protectedEntries) {
     // 与 assertRoutePolicyEnforced 内部同一套探针规则：受保护路由的探针必须落在 /api 或 /ws 内。
     const probe = entry.prefix
@@ -119,9 +132,14 @@ test("G11：ROUTE_POLICY 的受保护标注与实现一致（启动期断言不�
         : entry.path
       : entry.path.replace(":id", "sample-id");
     assert.equal(
-      ["/api", "/ws"].some((prefix) => probe === prefix || probe.startsWith(prefix + "/")),
+      ["/api", "/ws"].some(
+        (prefix) => probe === prefix || probe.startsWith(prefix + "/"),
+      ),
       true,
-      entry.path + " 的探针 " + probe + " 必须落在受保护前缀内（否则清单与实现不一致）",
+      entry.path +
+        " 的探针 " +
+        probe +
+        " 必须落在受保护前缀内（否则清单与实现不一致）",
     );
   }
   // 公开路由必须写明理由（避免"顺手公开"）。
@@ -133,7 +151,10 @@ test("G11：ROUTE_POLICY 的受保护标注与实现一致（启动期断言不�
 test("G11 反向验证：把一条受保护路由改成不被覆盖 ⇒ 必须拒绝启动", () => {
   // 模拟"未来新增一条 /rpc 路由、忘了加进 isTokenProtectedPath"：断言必须抛错，而不是放过。
   assert.throws(
-    () => assertRoutePolicyEnforced((pathname) => pathname.startsWith("/api/") === false),
+    () =>
+      assertRoutePolicyEnforced(
+        (pathname) => pathname.startsWith("/api/") === false,
+      ),
     /路由口径不一致/,
     "标注与实现不一致时必须拒绝启动（fail-closed）",
   );
@@ -141,16 +162,23 @@ test("G11 反向验证：把一条受保护路由改成不被覆盖 ⇒ 必须�
 
 test("审计：鉴权失败与封禁（含**否定式**：令牌字面量绝不出现）", async () => {
   const capture = captureAudit();
-  const throttle = createAuthThrottle({ maxFailures: 2, windowMs: 60_000, banDurationMs: 60_000 });
-  await withServer({ authToken: TOKEN, audit: capture.audit, throttle }, async (port) => {
-    const baseUrl = "http://127.0.0.1:" + port;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      const response = await fetch(baseUrl + "/api/server-info");
-      assert.equal(response.status, 401);
-    }
-    // 第 3 次被限流拒绝（403）—— 这一条不写 auth-failure，避免把"被封禁"混进失败明细。
-    assert.equal((await fetch(baseUrl + "/api/server-info")).status, 403);
+  const throttle = createAuthThrottle({
+    maxFailures: 2,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
   });
+  await withServer(
+    { authToken: TOKEN, audit: capture.audit, throttle },
+    async (port) => {
+      const baseUrl = "http://127.0.0.1:" + port;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const response = await fetch(baseUrl + "/api/server-info");
+        assert.equal(response.status, 401);
+      }
+      // 第 3 次被限流拒绝（403）—— 这一条不写 auth-failure，避免把"被封禁"混进失败明细。
+      assert.equal((await fetch(baseUrl + "/api/server-info")).status, 403);
+    },
+  );
 
   const failures = capture.events("audit:auth-failure");
   const bans = capture.events("audit:auth-ban");
@@ -163,7 +191,11 @@ test("审计：鉴权失败与封禁（含**否定式**：令牌字面量绝不�
   // **否定式**：真实令牌字符串、cookie 名、查询串都不得出现。
   const text = capture.text();
   assert.equal(text.includes(SECRET_MARKER), false, "审计不得包含令牌字面量");
-  assert.equal(text.includes("zcode_lite_token"), false, "审计不得包含 cookie 名");
+  assert.equal(
+    text.includes("zcode_lite_token"),
+    false,
+    "审计不得包含 cookie 名",
+  );
   assert.equal(text.includes("?token="), false, "审计不得包含查询串");
   assert.equal(text.includes("Unauthorized"), false, "审计不得复制响应体");
 });
@@ -171,7 +203,9 @@ test("审计：鉴权失败与封禁（含**否定式**：令牌字面量绝不�
 test("审计：连接建立/断开（含角色、鉴权状态、存活时长、令牌标签）", async () => {
   const capture = captureAudit();
   await withServer({ authToken: TOKEN, audit: capture.audit }, async (port) => {
-    const result = await probeWebSocket(port, "/ws", { Cookie: "zcode_lite_token=" + TOKEN });
+    const result = await probeWebSocket(port, "/ws", {
+      Cookie: "zcode_lite_token=" + TOKEN,
+    });
     assert.equal(result, "OPEN");
     // 等一下让 onClose 跑到（socket.terminate 由服务端 close 触发审计）。
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -186,7 +220,11 @@ test("审计：连接建立/断开（含角色、鉴权状态、存活时长、�
   assert.equal(opens[0]!.peer, "127.0.0.1");
   assert.equal(opens[0]!.path, "/ws");
   assert.equal(opens[0]!.tokenLabel, "<env>", "只写标签，不写令牌");
-  assert.equal(opens[0]!.connectionId, closes[0]!.connectionId, "open/close 必须能配对");
+  assert.equal(
+    opens[0]!.connectionId,
+    closes[0]!.connectionId,
+    "open/close 必须能配对",
+  );
   assert.equal(typeof closes[0]!.durationMs, "number");
   assert.equal(capture.text().includes(SECRET_MARKER), false);
 });
@@ -194,7 +232,11 @@ test("审计：连接建立/断开（含角色、鉴权状态、存活时长、�
 test("审计：Host 被拒与来源被拒**分开记**（不同防线，不能混成一个事件）", async () => {
   const capture = captureAudit();
   await withServer(
-    { authToken: TOKEN, audit: capture.audit, trustedHosts: [{ host: "panel.example" }] },
+    {
+      authToken: TOKEN,
+      audit: capture.audit,
+      trustedHosts: [{ host: "panel.example" }],
+    },
     async (port) => {
       const baseUrl = "http://127.0.0.1:" + port;
       // ① 跨站（Origin 与 Host 不同源）⇒ origin-rejected
@@ -211,7 +253,11 @@ test("审计：Host 被拒与来源被拒**分开记**（不同防线，不能�
       assert.equal(wsRejected, "HTTP 403");
     },
   );
-  assert.equal(capture.events("audit:origin-rejected").length, 1, "跨站必须记 origin-rejected");
+  assert.equal(
+    capture.events("audit:origin-rejected").length,
+    1,
+    "跨站必须记 origin-rejected",
+  );
   const hostRejected = capture.events("audit:host-rejected");
   assert.equal(hostRejected.length, 1, "伪 Host 必须记 host-rejected");
   assert.equal(hostRejected[0]!.path, "/ws");
@@ -230,7 +276,10 @@ test("审计：并发上限（B3）超限时记事件，且已建立的连接不
       });
       try {
         await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("第一条连接未在 5s 内建立")), 5000);
+          const timer = setTimeout(
+            () => reject(new Error("第一条连接未在 5s 内建立")),
+            5000,
+          );
           held.on("open", () => {
             clearTimeout(timer);
             resolve();
@@ -240,17 +289,33 @@ test("审计：并发上限（B3）超限时记事件，且已建立的连接不
             reject(error);
           });
         });
-        const second = await probeWebSocket(port, "/ws", { Cookie: "zcode_lite_token=" + TOKEN });
-        assert.equal(second, "HTTP 403", "超限的新连接必须被拒（403 + 明确原因）");
-        const third = await probeWebSocket(port, "/ws", { Cookie: "zcode_lite_token=" + TOKEN });
-        assert.equal(third, "HTTP 403", "持续超限持续被拒（已建立的连接不受影响）");
+        const second = await probeWebSocket(port, "/ws", {
+          Cookie: "zcode_lite_token=" + TOKEN,
+        });
+        assert.equal(
+          second,
+          "HTTP 403",
+          "超限的新连接必须被拒（403 + 明确原因）",
+        );
+        const third = await probeWebSocket(port, "/ws", {
+          Cookie: "zcode_lite_token=" + TOKEN,
+        });
+        assert.equal(
+          third,
+          "HTTP 403",
+          "持续超限持续被拒（已建立的连接不受影响）",
+        );
       } finally {
         held.terminate();
       }
     },
   );
   const rejected = capture.events("audit:connection-limit-rejected");
-  assert.equal(rejected.length, 2, "两次被拒 = 两条事件（合并策略在窗口内仍逐条写到上限）");
+  assert.equal(
+    rejected.length,
+    2,
+    "两次被拒 = 两条事件（合并策略在窗口内仍逐条写到上限）",
+  );
   assert.equal(rejected[0]!.maxConnections, 1);
   assert.equal(rejected[0]!.connections, 1);
   assert.equal(rejected[0]!.reason, "活跃连接数达到上限");
@@ -284,14 +349,23 @@ test("审计：静态壳与正常请求不产生安全事件（避免噪音掩�
   const root = await mkdtemp(join(tmpdir(), "zcode-audit-shell-"));
   const staticRoot = join(root, "web");
   await mkdir(staticRoot, { recursive: true });
-  await writeFile(join(staticRoot, "index.html"), "<!doctype html><title>ok</title>");
+  await writeFile(
+    join(staticRoot, "index.html"),
+    "<!doctype html><title>ok</title>",
+  );
   const capture = captureAudit();
   try {
-    await withServer({ authToken: TOKEN, audit: capture.audit, staticRoot }, async (port) => {
-      const baseUrl = "http://127.0.0.1:" + port;
-      assert.equal((await fetch(baseUrl + "/")).status, 200);
-      assert.equal((await fetch(baseUrl + "/api/server-info?token=" + TOKEN)).status, 200);
-    });
+    await withServer(
+      { authToken: TOKEN, audit: capture.audit, staticRoot },
+      async (port) => {
+        const baseUrl = "http://127.0.0.1:" + port;
+        assert.equal((await fetch(baseUrl + "/")).status, 200);
+        assert.equal(
+          (await fetch(baseUrl + "/api/server-info?token=" + TOKEN)).status,
+          200,
+        );
+      },
+    );
     assert.deepEqual(capture.events(), [], "正常路径不得产生任何审计事件");
   } finally {
     await rm(root, { recursive: true, force: true });

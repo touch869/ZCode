@@ -1,17 +1,42 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AddressInfo } from "node:net";
+import { AddressInfo, type Server } from "node:net";
 import { WebSocket, type RawData } from "ws";
-import { Emitter, Event, SocketProtocol, VSBuffer, type ISocket } from "@zcode/rpc";
-import { ServiceCollection, ISystemService, IZCodeAgentService } from "@zcode/services";
+import {
+  Emitter,
+  Event,
+  SocketProtocol,
+  VSBuffer,
+  type ISocket,
+} from "@zcode/rpc";
+import {
+  ServiceCollection,
+  ISystemService,
+  IZCodeAgentService,
+} from "@zcode/services";
 import { createHttpServer } from "@zcode/server";
-import { createTopicResourcePeers, createTopicResourceRelayChannel } from "@zcode/services/node";
+// 指定 hostname 时 Node 的 listen 是异步绑定，必须等 listening 事件端口才可用
+//（hostname 为 undefined 的旧路径碰巧同步可见，不要依赖那个怪癖）。
+function waitForAddress(server: Server): Promise<AddressInfo> {
+  return new Promise((resolve) => {
+    if (server.listening) resolve(server.address() as AddressInfo);
+    else
+      server.once("listening", () => resolve(server.address() as AddressInfo));
+  });
+}
+import {
+  createTopicResourcePeers,
+  createTopicResourceRelayChannel,
+} from "@zcode/services/node";
 import { connectViaProtocol, connectViaWebSocket } from "@zcode/client";
 import {
   connectServerRemote,
   resolveServerRemoteEndpoints,
 } from "../src/host/serverRemoteConnection.js";
 import { registerHostServiceResourceTelemetry } from "../src/host/hostServiceResourceTelemetry.js";
-import { serverRemoteInfoSchema, type AgentLaneResourceSample } from "@zcode/shared";
+import {
+  serverRemoteInfoSchema,
+  type AgentLaneResourceSample,
+} from "@zcode/shared";
 
 function wrapNodeWebSocket(socket: WebSocket): ISocket {
   const onData = new Emitter<VSBuffer>();
@@ -53,14 +78,19 @@ function wrapNodeWebSocket(socket: WebSocket): ISocket {
 function connectNodeRpc(
   url: string,
   headers: Record<string, string>,
-): Promise<{ socket: WebSocket; services: ReturnType<typeof connectViaProtocol> }> {
+): Promise<{
+  socket: WebSocket;
+  services: ReturnType<typeof connectViaProtocol>;
+}> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { headers });
     socket.once("error", reject);
     socket.once("open", () => {
       resolve({
         socket,
-        services: connectViaProtocol(new SocketProtocol(wrapNodeWebSocket(socket))),
+        services: connectViaProtocol(
+          new SocketProtocol(wrapNodeWebSocket(socket)),
+        ),
       });
     });
   });
@@ -110,10 +140,13 @@ describe("server remote connection", () => {
   });
 
   it("resolves info and websocket endpoints from an HTTP server URL", () => {
-    expect(resolveServerRemoteEndpoints("https://studio.example.com/zcode/")).toEqual({
+    expect(
+      resolveServerRemoteEndpoints("https://studio.example.com/zcode/"),
+    ).toEqual({
       infoUrl: "https://studio.example.com/zcode/api/server-info",
       wsUrl: "wss://studio.example.com/zcode/ws",
-      hostCapabilityUrl: "https://studio.example.com/zcode/api/rpc-host-capability",
+      hostCapabilityUrl:
+        "https://studio.example.com/zcode/api/rpc-host-capability",
       hostWsUrl: "wss://studio.example.com/zcode/ws/host",
     });
     expect(resolveServerRemoteEndpoints("ws://127.0.0.1:3030/ws")).toEqual({
@@ -131,7 +164,7 @@ describe("server remote connection", () => {
     } as never);
     const server = createHttpServer(services, 0, { topicResourcePeers: peers });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const validate = vi.fn(async () => undefined);
     const relay = createTopicResourceRelayChannel({
       validate,
@@ -159,9 +192,13 @@ describe("server remote connection", () => {
       ...request,
       commands: [],
     });
-    expect(await peers.getChannel(request).call("validate", request)).toEqual({ valid: true });
+    expect(await peers.getChannel(request).call("validate", request)).toEqual({
+      valid: true,
+    });
     expect(validate).toHaveBeenCalledOnce();
-    expect(() => peers.getChannel({ ...request, remoteSessionId: "other" })).toThrow();
+    expect(() =>
+      peers.getChannel({ ...request, remoteSessionId: "other" }),
+    ).toThrow();
     connection.dispose();
     await vi.waitFor(() => expect(() => peers.getChannel(request)).toThrow());
   });
@@ -194,7 +231,7 @@ describe("server remote connection", () => {
       workspaces: [{ path: "/home/dev/project" }],
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
     const requestedPaths: string[] = [];
     const connection = await connectServerRemote(
@@ -225,20 +262,31 @@ describe("server remote connection", () => {
       clientMode: "desktop-continuous",
       deliveryProfile: "continuous",
     });
-    expect(requestedPaths).toEqual(["/api/server-info", "/api/rpc-host-capability"]);
+    expect(requestedPaths).toEqual([
+      "/api/server-info",
+      "/api/rpc-host-capability",
+    ]);
     let browserSocket: WebSocket | undefined;
-    const browserServices = await connectViaWebSocket(`ws://127.0.0.1:${address.port}/ws`, {
-      onOpenSocket: (socket) => (browserSocket = socket),
-    });
-    await expect(browserServices.zcodeAgentService.helloConversationV4()).resolves.toMatchObject({
+    const browserServices = await connectViaWebSocket(
+      `ws://127.0.0.1:${address.port}/ws`,
+      {
+        onOpenSocket: (socket) => (browserSocket = socket),
+      },
+    );
+    await expect(
+      browserServices.zcodeAgentService.helloConversationV4(),
+    ).resolves.toMatchObject({
       clientMode: "web-remote-replayable",
       deliveryProfile: "replayable",
     });
     browserSocket?.close();
 
-    const legacyHeaderConnection = await connectNodeRpc(`ws://127.0.0.1:${address.port}/ws`, {
-      "x-zcode-rpc-client-mode": "desktop-continuous",
-    });
+    const legacyHeaderConnection = await connectNodeRpc(
+      `ws://127.0.0.1:${address.port}/ws`,
+      {
+        "x-zcode-rpc-client-mode": "desktop-continuous",
+      },
+    );
     await expect(
       legacyHeaderConnection.services.zcodeAgentService.helloConversationV4(),
     ).resolves.toMatchObject({
@@ -259,7 +307,7 @@ describe("server remote connection", () => {
       authToken: "secret-token",
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const requestedUrls: URL[] = [];
 
     const connection = await connectServerRemote(
@@ -287,9 +335,11 @@ describe("server remote connection", () => {
       "/api/server-info",
       "/api/rpc-host-capability",
     ]);
-    expect(requestedUrls.every((url) => url.searchParams.get("token") === "secret-token")).toBe(
-      true,
-    );
+    expect(
+      requestedUrls.every(
+        (url) => url.searchParams.get("token") === "secret-token",
+      ),
+    ).toBe(true);
   });
 
   it.each([false, true])(
@@ -313,13 +363,14 @@ describe("server remote connection", () => {
         0,
       );
       servers.push(server);
-      const address = server.address() as AddressInfo;
+      const address = await waitForAddress(server);
       const connection = await connectServerRemote(
         { kind: "server", url: `http://127.0.0.1:${address.port}` },
         {
           fetchImpl: async (input, init) => {
             const response = await fetch(input, init);
-            if (supported || !String(input).endsWith("/api/server-info")) return response;
+            if (supported || !String(input).endsWith("/api/server-info"))
+              return response;
             const info = serverRemoteInfoSchema.parse(await response.json());
             delete info.capabilities.processResourceTelemetry;
             return Response.json(info);
@@ -334,7 +385,8 @@ describe("server remote connection", () => {
           connection.services.zcodeAgentService,
         ),
         runtimeSurface: "remote",
-        telemetrySupported: connection.serverInfo.capabilities.processResourceTelemetry === true,
+        telemetrySupported:
+          connection.serverInfo.capabilities.processResourceTelemetry === true,
         postMessage,
       });
       disposables.push(telemetry);
@@ -370,7 +422,7 @@ describe("server remote connection", () => {
     } as never);
     const server = createHttpServer(services, 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const httpBase = `http://127.0.0.1:${address.port}`;
     const wsHost = `ws://127.0.0.1:${address.port}/ws/host`;
 
@@ -395,7 +447,9 @@ describe("server remote connection", () => {
     const trusted = await connectNodeRpc(wsHost, {
       "x-zcode-rpc-host-capability": ticket.capability,
     });
-    await expect(trusted.services.zcodeAgentService.helloConversationV4()).resolves.toMatchObject({
+    await expect(
+      trusted.services.zcodeAgentService.helloConversationV4(),
+    ).resolves.toMatchObject({
       clientMode: "desktop-continuous",
       deliveryProfile: "continuous",
     });
