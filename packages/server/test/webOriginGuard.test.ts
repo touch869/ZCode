@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import { WebSocket } from "ws";
 import { ServiceCollection } from "@zcode/services";
 import { createHttpServer, type HttpServerOptions } from "../src/http.js";
@@ -41,8 +41,14 @@ async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "zcode-origin-guard-"));
   const staticRoot = join(root, "web");
   await mkdir(join(staticRoot, "assets"), { recursive: true });
-  await writeFile(join(staticRoot, "index.html"), "<!doctype html><title>shell-fixture</title>");
-  await writeFile(join(staticRoot, "assets/app.js"), "console.log('shell-asset');");
+  await writeFile(
+    join(staticRoot, "index.html"),
+    "<!doctype html><title>shell-fixture</title>",
+  );
+  await writeFile(
+    join(staticRoot, "assets/app.js"),
+    "console.log('shell-asset');",
+  );
   return { root, staticRoot };
 }
 
@@ -90,7 +96,10 @@ function probeWebSocket(
       clearTimeout(timer);
       resolve(value);
     };
-    const socket = new WebSocket(wsBaseUrl + path, headers ? { headers } : undefined);
+    const socket = new WebSocket(
+      wsBaseUrl + path,
+      headers ? { headers } : undefined,
+    );
     const timer = setTimeout(() => {
       socket.terminate();
       finish("TIMEOUT");
@@ -111,7 +120,10 @@ function probeWebSocket(
 }
 
 /** 与 probeWebSocket 同形，但把被拒的 HTTP 响应对象交回来（用于断言拒绝响应也带安全头）。 */
-function probeWebSocketResponse(url: string, headers: Record<string, string>): Promise<Response> {
+function probeWebSocketResponse(
+  url: string,
+  headers: Record<string, string>,
+): Promise<Response> {
   return new Promise<Response>((resolve, reject) => {
     const socket = new WebSocket(url, { headers });
     socket.on("unexpected-response", (_request, response) => {
@@ -123,12 +135,13 @@ function probeWebSocketResponse(url: string, headers: Record<string, string>): P
         resolve(
           new Response(Buffer.concat(chunks), {
             status: response.statusCode ?? 0,
-            headers: Object.entries(response.headers).flatMap(([name, value]) =>
-              value === undefined
-                ? []
-                : Array.isArray(value)
-                  ? value.map((v): [string, string] => [name, v])
-                  : [[name, String(value)] as [string, string]],
+            headers: Object.entries(response.headers).flatMap(
+              ([name, value]) =>
+                value === undefined
+                  ? []
+                  : Array.isArray(value)
+                    ? value.map((v): [string, string] => [name, v])
+                    : [[name, String(value)] as [string, string]],
             ),
           }),
         );
@@ -162,9 +175,22 @@ const ORIGIN_TIERS = [
 const ENDPOINTS = [
   { name: "WS /ws", method: "GET", pathname: "/ws", websocket: true },
   { name: "WS /ws/host", method: "GET", pathname: "/ws/host", websocket: true },
-  { name: "WS /ws/remote/x", method: "GET", pathname: "/ws/remote/x", websocket: true },
-  { name: "POST /api/rpc-host-capability", method: "POST", pathname: "/api/rpc-host-capability" },
-  { name: "POST /api/connect-remote", method: "POST", pathname: "/api/connect-remote" },
+  {
+    name: "WS /ws/remote/x",
+    method: "GET",
+    pathname: "/ws/remote/x",
+    websocket: true,
+  },
+  {
+    name: "POST /api/rpc-host-capability",
+    method: "POST",
+    pathname: "/api/rpc-host-capability",
+  },
+  {
+    name: "POST /api/connect-remote",
+    method: "POST",
+    pathname: "/api/connect-remote",
+  },
   {
     name: "DELETE /api/anything（未来写方法）",
     method: "DELETE",
@@ -185,7 +211,10 @@ const EXPECTED: Record<string, { allowed: boolean; why: string }> = {
     allowed: true,
     why: "浏览器对任何跨站请求都会带 Origin；不带 Origin 的只可能是非浏览器客户端，而这类客户端可以随意伪造 Origin，来源校验对它本就没有意义（拦住它的是令牌层）。放行是为了不打断 CLI/桌面与既有鉴权覆盖测试。",
   },
-  "错误 Origin（跨站站点）": { allowed: false, why: "典型 CSRF：恶意站点发起的跨站请求。" },
+  "错误 Origin（跨站站点）": {
+    allowed: false,
+    why: "典型 CSRF：恶意站点发起的跨站请求。",
+  },
   "同 host 不同端口的 Origin（same-site, cross-origin）": {
     allowed: false,
     why: "same-site 不等于 same-origin；端口不同就是跨源，不能被 cookie 的 SameSite 覆盖，必须按跨源拒绝。",
@@ -203,7 +232,9 @@ test("五档 × 八端点的判定矩阵：每档结论与理由一致", () => {
     // 不走 shouldGuardRequest 就会出现「纯函数拒绝、真实中间件放行」的口径漂移。
     const inScope = shouldGuardRequest(endpoint.method, endpoint.pathname);
     for (const tier of ORIGIN_TIERS) {
-      const expected = inScope ? EXPECTED[tier.name] : { allowed: true, why: "不在保护面内" };
+      const expected = inScope
+        ? EXPECTED[tier.name]
+        : { allowed: true, why: "不在保护面内" };
       const decision = inScope
         ? evaluateRequestOrigin(
             {
@@ -237,20 +268,29 @@ test("升级判定：WS 路径恒在保护面内（不管用什么方法探查�
   for (const pathname of ["/ws", "/ws/host", "/ws/remote/xyz"]) {
     assert.equal(
       evaluateUpgradeOrigin(
-        { pathname, originHeader: CROSS_SITE_ORIGIN, hostHeader: "127.0.0.1:3030" },
+        {
+          pathname,
+          originHeader: CROSS_SITE_ORIGIN,
+          hostHeader: "127.0.0.1:3030",
+        },
         [],
       ).allowed,
       false,
       pathname + " 的跨源升级必须被拒（HTTP 层 gate 用的就是这个判定）",
     );
     assert.equal(
-      evaluateUpgradeOrigin({ pathname, hostHeader: "127.0.0.1:3030" }, []).allowed,
+      evaluateUpgradeOrigin({ pathname, hostHeader: "127.0.0.1:3030" }, [])
+        .allowed,
       true,
       pathname + " 无 Origin 时必须放行（非浏览器客户端路径）",
     );
   }
   assert.equal(shouldGuardRequest("GET", "/ws"), true);
-  assert.equal(shouldGuardRequest("GET", "/api/server-info"), false, "GET 读接口不在保护面内");
+  assert.equal(
+    shouldGuardRequest("GET", "/api/server-info"),
+    false,
+    "GET 读接口不在保护面内",
+  );
   assert.equal(
     shouldGuardRequest("POST", "/api/server-info"),
     true,
@@ -276,16 +316,35 @@ test("同源判定：默认端口等价、不同协议不等价、畸形 Origin 
     true,
     "显式 :443 与缺省端口应等价",
   );
-  assert.equal(decide("https://panel.example:443", "panel.example", "https:"), true);
-  assert.equal(decide("http://panel.example", "panel.example:8443"), false, "端口不同必须拒绝");
-  assert.equal(decide("https://panel.example", "panel.example"), false, "协议不同必须拒绝");
+  assert.equal(
+    decide("https://panel.example:443", "panel.example", "https:"),
+    true,
+  );
+  assert.equal(
+    decide("http://panel.example", "panel.example:8443"),
+    false,
+    "端口不同必须拒绝",
+  );
+  assert.equal(
+    decide("https://panel.example", "panel.example"),
+    false,
+    "协议不同必须拒绝",
+  );
   assert.equal(
     decide("https://panel.example/evil", "panel.example"),
     false,
     "Origin 里带路径应判为畸形并拒绝",
   );
-  assert.equal(decide("file:///etc/passwd", "panel.example"), false, "非 http(s) 协议应拒绝");
-  assert.equal(decide("not a url", "panel.example"), false, "不可解析的 Origin 应拒绝");
+  assert.equal(
+    decide("file:///etc/passwd", "panel.example"),
+    false,
+    "非 http(s) 协议应拒绝",
+  );
+  assert.equal(
+    decide("not a url", "panel.example"),
+    false,
+    "不可解析的 Origin 应拒绝",
+  );
   assert.equal(decide(CROSS_SITE_ORIGIN, "panel.example", "https:"), false);
 });
 
@@ -310,7 +369,11 @@ test("跨源合法部署：只有登记在 trustedOrigins 里的来源才放行"
       trusted,
     ).allowed;
   assert.equal(decide("https://panel.example"), true, "显式登记的来源应放行");
-  assert.equal(decide("http://gateway.internal:8443"), true, "带端口登记的来源应放行");
+  assert.equal(
+    decide("http://gateway.internal:8443"),
+    true,
+    "带端口登记的来源应放行",
+  );
   assert.equal(decide("https://other.example"), false, "未登记来源仍拒绝");
 });
 
@@ -319,25 +382,44 @@ test("安全响应头：nosniff/frame-ancestors 无条件；CSP 默认 report-on
   assert.equal(defaults["X-Content-Type-Options"], "nosniff");
   assert.equal(defaults["X-Frame-Options"], "DENY");
   assert.equal(defaults["Referrer-Policy"], "no-referrer");
-  assert.equal(defaults["Content-Security-Policy-Report-Only"], "frame-ancestors 'none'");
-  assert.equal(defaults["Content-Security-Policy"], undefined, "默认不得 enforce（先观察期）");
-  assert.equal(defaults["Strict-Transport-Security"], undefined, "默认不得下发 HSTS");
+  assert.equal(
+    defaults["Content-Security-Policy-Report-Only"],
+    "frame-ancestors 'none'",
+  );
+  assert.equal(
+    defaults["Content-Security-Policy"],
+    undefined,
+    "默认不得 enforce（先观察期）",
+  );
+  assert.equal(
+    defaults["Strict-Transport-Security"],
+    undefined,
+    "默认不得下发 HSTS",
+  );
 
   assert.equal(
-    buildSecurityHeaders({ secure: false, hsts: true })["Strict-Transport-Security"],
+    buildSecurityHeaders({ secure: false, hsts: true })[
+      "Strict-Transport-Security"
+    ],
     undefined,
     "明文 http 下不得下发 HSTS（否则把用户锁出明文入口）",
   );
   assert.match(
-    buildSecurityHeaders({ secure: true, hsts: true })["Strict-Transport-Security"] ?? "",
+    buildSecurityHeaders({ secure: true, hsts: true })[
+      "Strict-Transport-Security"
+    ] ?? "",
     /^max-age=31536000; includeSubDomains$/,
   );
   assert.equal(
-    buildSecurityHeaders({ secure: true, cspMode: "enforce" })["Content-Security-Policy"],
+    buildSecurityHeaders({ secure: true, cspMode: "enforce" })[
+      "Content-Security-Policy"
+    ],
     "frame-ancestors 'none'",
   );
   assert.equal(
-    buildSecurityHeaders({ secure: true, cspMode: "off" })["Content-Security-Policy-Report-Only"],
+    buildSecurityHeaders({ secure: true, cspMode: "off" })[
+      "Content-Security-Policy-Report-Only"
+    ],
     undefined,
   );
   assert.equal(
@@ -354,92 +436,124 @@ test("安全响应头：nosniff/frame-ancestors 无条件；CSP 默认 report-on
 test("真实服务端：五档 × WS 与危险 HTTP 端点的实测结果", async () => {
   const fixture = await createFixture();
   try {
-    await withServer({ authToken: TOKEN, staticRoot: fixture.staticRoot }, async (baseUrl) => {
-      const wsBaseUrl = baseUrl.replace("http://", "ws://");
-      const cookie = await authorizedCookie(baseUrl);
-      const cookieHeader = { Cookie: cookie };
+    await withServer(
+      { authToken: TOKEN, staticRoot: fixture.staticRoot },
+      async (baseUrl) => {
+        const wsBaseUrl = baseUrl.replace("http://", "ws://");
+        const cookie = await authorizedCookie(baseUrl);
+        const cookieHeader = { Cookie: cookie };
 
-      // ① 无凭据 + 无 Origin ⇒ 401（令牌层）。这条钉住既有语义不被来源层改写。
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws"),
-        "HTTP 401",
-        "无凭据无 Origin 应仍是 401",
-      );
+        // ① 无凭据 + 无 Origin ⇒ 401（令牌层）。这条钉住既有语义不被来源层改写。
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws"),
+          "HTTP 401",
+          "无凭据无 Origin 应仍是 401",
+        );
 
-      // ② 带凭据 + 无 Origin ⇒ 允许升级（非浏览器客户端路径，含既有鉴权覆盖测试与 CLI/桌面）。
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws", cookieHeader),
-        "OPEN",
-        "带 cookie 且无 Origin 应允许",
-      );
+        // ② 带凭据 + 无 Origin ⇒ 允许升级（非浏览器客户端路径，含既有鉴权覆盖测试与 CLI/桌面）。
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws", cookieHeader),
+          "OPEN",
+          "带 cookie 且无 Origin 应允许",
+        );
 
-      // ③ 带凭据 + 错误 Origin ⇒ 403（**核心安全断言**）。
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws", { ...cookieHeader, Origin: CROSS_SITE_ORIGIN }),
-        "HTTP 403",
-        "带 cookie 的跨站 WS 必须被拒",
-      );
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws/host", { ...cookieHeader, Origin: CROSS_SITE_ORIGIN }),
-        "HTTP 403",
-      );
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws/remote/x", {
-          ...cookieHeader,
-          Origin: CROSS_SITE_ORIGIN,
-        }),
-        "HTTP 403",
-      );
-      // same-site 不同端口同样拒绝。
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws", {
-          ...cookieHeader,
-          Origin: SAME_SITE_DIFFERENT_PORT,
-        }),
-        "HTTP 403",
-      );
+        // ③ 带凭据 + 错误 Origin ⇒ 403（**核心安全断言**）。
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws", {
+            ...cookieHeader,
+            Origin: CROSS_SITE_ORIGIN,
+          }),
+          "HTTP 403",
+          "带 cookie 的跨站 WS 必须被拒",
+        );
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws/host", {
+            ...cookieHeader,
+            Origin: CROSS_SITE_ORIGIN,
+          }),
+          "HTTP 403",
+        );
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws/remote/x", {
+            ...cookieHeader,
+            Origin: CROSS_SITE_ORIGIN,
+          }),
+          "HTTP 403",
+        );
+        // same-site 不同端口同样拒绝。
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws", {
+            ...cookieHeader,
+            Origin: SAME_SITE_DIFFERENT_PORT,
+          }),
+          "HTTP 403",
+        );
 
-      // ④ 带凭据 + 同源 Origin ⇒ 允许升级（浏览器正常路径）。
-      assert.equal(
-        await probeWebSocket(wsBaseUrl, "/ws", { ...cookieHeader, Origin: baseUrl }),
-        "OPEN",
-        "同源 Browser 客户端必须照旧可用",
-      );
+        // ④ 带凭据 + 同源 Origin ⇒ 允许升级（浏览器正常路径）。
+        assert.equal(
+          await probeWebSocket(wsBaseUrl, "/ws", {
+            ...cookieHeader,
+            Origin: baseUrl,
+          }),
+          "OPEN",
+          "同源 Browser 客户端必须照旧可用",
+        );
 
-      // ⑤ 危险 HTTP 端点：错误 Origin ⇒ 403 且**不签发 capability**。
-      const crossSite = await fetch(baseUrl + "/api/rpc-host-capability", {
-        method: "POST",
-        headers: { ...cookieHeader, Origin: CROSS_SITE_ORIGIN },
-      });
-      assert.equal(crossSite.status, 403, "跨站 POST 必须 403");
-      const body = await crossSite.text();
-      assert.doesNotMatch(body, /capability/i, "403 响应体不得包含 capability");
-      assert.match(body, /跨站/, "403 必须给出可操作原因");
+        // ⑤ 危险 HTTP 端点：错误 Origin ⇒ 403 且**不签发 capability**。
+        const crossSite = await fetch(baseUrl + "/api/rpc-host-capability", {
+          method: "POST",
+          headers: { ...cookieHeader, Origin: CROSS_SITE_ORIGIN },
+        });
+        assert.equal(crossSite.status, 403, "跨站 POST 必须 403");
+        const body = await crossSite.text();
+        assert.doesNotMatch(
+          body,
+          /capability/i,
+          "403 响应体不得包含 capability",
+        );
+        assert.match(body, /跨站/, "403 必须给出可操作原因");
 
-      // 同源 POST ⇒ 200 且真的签发 capability（证明拒绝是「按来源」而不是「把端点打死了」）。
-      const sameOrigin = await fetch(baseUrl + "/api/rpc-host-capability", {
-        method: "POST",
-        headers: { ...cookieHeader, Origin: baseUrl },
-      });
-      assert.equal(sameOrigin.status, 200, "同源 POST 必须仍能签发 capability");
-      const issued = (await sameOrigin.json()) as { capability?: string };
-      assert.ok(issued.capability, "同源应拿到 capability");
+        // 同源 POST ⇒ 200 且真的签发 capability（证明拒绝是「按来源」而不是「把端点打死了」）。
+        const sameOrigin = await fetch(baseUrl + "/api/rpc-host-capability", {
+          method: "POST",
+          headers: { ...cookieHeader, Origin: baseUrl },
+        });
+        assert.equal(
+          sameOrigin.status,
+          200,
+          "同源 POST 必须仍能签发 capability",
+        );
+        const issued = (await sameOrigin.json()) as { capability?: string };
+        assert.ok(issued.capability, "同源应拿到 capability");
 
-      // 无 Origin + 带凭据（curl/CLI）⇒ 放行，且 capability 可用。
-      const noOrigin = await fetch(baseUrl + "/api/rpc-host-capability", {
-        method: "POST",
-        headers: cookieHeader,
-      });
-      assert.equal(noOrigin.status, 200, "无 Origin 的 CLI/curl 路径不得被误伤");
+        // 无 Origin + 带凭据（curl/CLI）⇒ 放行，且 capability 可用。
+        const noOrigin = await fetch(baseUrl + "/api/rpc-host-capability", {
+          method: "POST",
+          headers: cookieHeader,
+        });
+        assert.equal(
+          noOrigin.status,
+          200,
+          "无 Origin 的 CLI/curl 路径不得被误伤",
+        );
 
-      // 写方法的跨站 POST /api/connect-remote 同样拒绝（这条同时挡住服务端替攻击者出网）。
-      const connectRemote = await fetch(baseUrl + "/api/connect-remote", {
-        method: "POST",
-        headers: { ...cookieHeader, Origin: CROSS_SITE_ORIGIN, "content-type": "application/json" },
-        body: JSON.stringify({ kind: "ssh" }),
-      });
-      assert.equal(connectRemote.status, 403, "跨站 POST /api/connect-remote 必须 403");
-    });
+        // 写方法的跨站 POST /api/connect-remote 同样拒绝（这条同时挡住服务端替攻击者出网）。
+        const connectRemote = await fetch(baseUrl + "/api/connect-remote", {
+          method: "POST",
+          headers: {
+            ...cookieHeader,
+            Origin: CROSS_SITE_ORIGIN,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ kind: "ssh" }),
+        });
+        assert.equal(
+          connectRemote.status,
+          403,
+          "跨站 POST /api/connect-remote 必须 403",
+        );
+      },
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -448,69 +562,72 @@ test("真实服务端：五档 × WS 与危险 HTTP 端点的实测结果", asyn
 test("真实服务端：安全响应头打到静态壳、API 401 与 WS 拒绝响应上", async () => {
   const fixture = await createFixture();
   try {
-    await withServer({ authToken: TOKEN, staticRoot: fixture.staticRoot }, async (baseUrl) => {
-      for (const [label, response] of [
-        ["SPA 壳", await fetch(baseUrl + "/")],
-        ["静态资产", await fetch(baseUrl + "/assets/app.js")],
-        ["未授权 API", await fetch(baseUrl + "/api/server-info")],
-        [
-          // fetch/undici 不允许手工设置 Upgrade 头，这里用真实 WS 客户端拿被拒响应，
-          // 顺便证明「拒绝响应」本身也带安全头。
-          "跨站 WS 拒绝",
-          await (async () => {
-            const cookie = await authorizedCookie(baseUrl);
-            const rejected = await probeWebSocketResponse(
-              baseUrl.replace("http://", "ws://") + "/ws",
-              {
-                Cookie: cookie,
-                Origin: CROSS_SITE_ORIGIN,
-              },
-            );
-            // 这条断言是「为什么必须在 HTTP 层拒绝」的护栏：@hono/node-ws 的升级适配器
-            // 只保留状态码、把响应体与响应头一起丢掉（实测过，若不修就是空的 403）。
-            assert.equal(rejected.status, 403, "跨站升级必须在 HTTP 层被拒");
-            const rejectionBody = await rejected.text();
-            assert.match(
-              rejectionBody,
-              /跨站/,
-              "被拒的升级请求必须拿到可操作原因（而不是空的 403）",
-            );
-            assert.equal(
-              rejected.headers.get("x-zcode-cross-site-rejected"),
-              "1",
-              "被拒的升级响应必须带来源拒绝标记头",
-            );
-            return rejected;
-          })(),
-        ],
-      ] as const) {
-        assert.equal(
-          response.headers.get("x-content-type-options"),
-          "nosniff",
-          label + " 缺 nosniff",
-        );
-        assert.equal(
-          response.headers.get("x-frame-options"),
-          "DENY",
-          label + " 缺 X-Frame-Options",
-        );
-        assert.equal(
-          response.headers.get("referrer-policy"),
-          "no-referrer",
-          label + " 缺 Referrer-Policy",
-        );
-        assert.equal(
-          response.headers.get("content-security-policy-report-only"),
-          "frame-ancestors 'none'",
-          label + " 缺 report-only CSP",
-        );
-        assert.equal(
-          response.headers.get("strict-transport-security"),
-          null,
-          label + " 明文下不得有 HSTS",
-        );
-      }
-    });
+    await withServer(
+      { authToken: TOKEN, staticRoot: fixture.staticRoot },
+      async (baseUrl) => {
+        for (const [label, response] of [
+          ["SPA 壳", await fetch(baseUrl + "/")],
+          ["静态资产", await fetch(baseUrl + "/assets/app.js")],
+          ["未授权 API", await fetch(baseUrl + "/api/server-info")],
+          [
+            // fetch/undici 不允许手工设置 Upgrade 头，这里用真实 WS 客户端拿被拒响应，
+            // 顺便证明「拒绝响应」本身也带安全头。
+            "跨站 WS 拒绝",
+            await (async () => {
+              const cookie = await authorizedCookie(baseUrl);
+              const rejected = await probeWebSocketResponse(
+                baseUrl.replace("http://", "ws://") + "/ws",
+                {
+                  Cookie: cookie,
+                  Origin: CROSS_SITE_ORIGIN,
+                },
+              );
+              // 这条断言是「为什么必须在 HTTP 层拒绝」的护栏：@hono/node-ws 的升级适配器
+              // 只保留状态码、把响应体与响应头一起丢掉（实测过，若不修就是空的 403）。
+              assert.equal(rejected.status, 403, "跨站升级必须在 HTTP 层被拒");
+              const rejectionBody = await rejected.text();
+              assert.match(
+                rejectionBody,
+                /跨站/,
+                "被拒的升级请求必须拿到可操作原因（而不是空的 403）",
+              );
+              assert.equal(
+                rejected.headers.get("x-zcode-cross-site-rejected"),
+                "1",
+                "被拒的升级响应必须带来源拒绝标记头",
+              );
+              return rejected;
+            })(),
+          ],
+        ] as const) {
+          assert.equal(
+            response.headers.get("x-content-type-options"),
+            "nosniff",
+            label + " 缺 nosniff",
+          );
+          assert.equal(
+            response.headers.get("x-frame-options"),
+            "DENY",
+            label + " 缺 X-Frame-Options",
+          );
+          assert.equal(
+            response.headers.get("referrer-policy"),
+            "no-referrer",
+            label + " 缺 Referrer-Policy",
+          );
+          assert.equal(
+            response.headers.get("content-security-policy-report-only"),
+            "frame-ancestors 'none'",
+            label + " 缺 report-only CSP",
+          );
+          assert.equal(
+            response.headers.get("strict-transport-security"),
+            null,
+            label + " 明文下不得有 HSTS",
+          );
+        }
+      },
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -531,7 +648,11 @@ test("真实服务端：跨源白名单生效后，登记来源可 POST、未登
           method: "POST",
           headers: { Cookie: cookie, Origin: "https://panel.example" },
         });
-        assert.equal(trusted.status, 200, "登记来源必须放行（否则反代部署无法工作）");
+        assert.equal(
+          trusted.status,
+          200,
+          "登记来源必须放行（否则反代部署无法工作）",
+        );
         const untrusted = await fetch(baseUrl + "/api/rpc-host-capability", {
           method: "POST",
           headers: { Cookie: cookie, Origin: CROSS_SITE_ORIGIN },

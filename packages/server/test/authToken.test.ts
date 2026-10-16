@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createAuthTokenStore, parseAuthTokenFile } from "../src/authToken.js";
 
 /**
@@ -43,8 +43,13 @@ test("解析：空文件 / 只有注释 / 只有空白 ⇒ 抛错（fail-closed�
 });
 
 test("解析：重复令牌不抛错但只保留一条（配置噪声不该阻断启动）", () => {
-  const records = parseAuthTokenFile("same-token 第一次\nsame-token 第二次\nother\n");
-  assert.deepEqual(records, [{ token: "same-token", label: "第一次" }, { token: "other" }]);
+  const records = parseAuthTokenFile(
+    "same-token 第一次\nsame-token 第二次\nother\n",
+  );
+  assert.deepEqual(records, [
+    { token: "same-token", label: "第一次" },
+    { token: "other" },
+  ]);
 });
 
 test("校验：命中 / 未命中 / 空候选 / 只差一个字符都不得命中", () => {
@@ -100,7 +105,11 @@ test("热重载：文件被写坏（空/只有注释）⇒ 保持上一份可用
   assert.equal(result.ok, false);
   assert.match(result.error ?? "", /没有解析出任何令牌/);
   assert.equal(warnings.length, 1, "必须留下一条告警（不静默）");
-  assert.equal(store.verify("tok-a"), true, "重载失败不得改动现状：旧令牌仍可用");
+  assert.equal(
+    store.verify("tok-a"),
+    true,
+    "重载失败不得改动现状：旧令牌仍可用",
+  );
 });
 
 test("显式令牌与文件令牌合并：文件里删掉一条不影响显式令牌，反之亦然", () => {

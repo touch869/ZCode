@@ -9,14 +9,22 @@ import {
 } from "../scripts/powershell-command.mjs";
 
 function decodeCommand(args: string[]): string {
-  expect(args.slice(0, 4)).toEqual(["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+  expect(args.slice(0, 4)).toEqual([
+    "-NoLogo",
+    "-NoProfile",
+    "-NonInteractive",
+    "-EncodedCommand",
+  ]);
   expect(args).toHaveLength(5);
   return Buffer.from(args[4]!, "base64").toString("utf16le");
 }
 
 describe("powershell-command", () => {
   it("把动态值编码进脚本且不再依赖普通 -Command 的尾随参数", () => {
-    const values = ["C:\\Program Files\\Z'Code;测试\\helper.exe", "value with spaces & symbols"];
+    const values = [
+      "C:\\Program Files\\Z'Code;测试\\helper.exe",
+      "value with spaces & symbols",
+    ];
     const args = createEncodedPowerShellArgs(
       "[Console]::Out.Write($zcodeArg0 + '|' + $zcodeArg1)",
       values,
@@ -39,7 +47,9 @@ describe("powershell-command", () => {
     expect(command).toContain(
       "[IO.Path]::Combine($PSHOME,'Modules','Microsoft.PowerShell.Security'",
     );
-    expect(command).toContain("Import-Module -Name $zcodeSecurityModule -Force -ErrorAction Stop");
+    expect(command).toContain(
+      "Import-Module -Name $zcodeSecurityModule -Force -ErrorAction Stop",
+    );
     expect(command).toContain("Windows PowerShell Security module load failed");
     expect(command).toContain("exit 26");
     expect(command).not.toContain("$env:PSModulePath");
@@ -52,11 +62,17 @@ describe("powershell-command", () => {
   it.runIf(process.platform === "win32")(
     "Windows PowerShell 能还原带空格和脚本元字符的动态值",
     () => {
-      const values = ["C:\\Program Files\\Z'Code;测试\\helper.exe", "value with spaces & symbols"];
+      const values = [
+        "C:\\Program Files\\Z'Code;测试\\helper.exe",
+        "value with spaces & symbols",
+      ];
       const output = execFileSync(
         "powershell.exe",
         createEncodedPowerShellArgs(
-          "[Console]::Out.Write($zcodeArg0 + [Environment]::NewLine + $zcodeArg1)",
+          // Windows PowerShell 按控制台代码页输出（中文系统=GBK），先切成 UTF-8 才能与
+          // Node 侧的 utf8 解码对齐；不改变被测的参数编解码路径本身。
+          "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+            "[Console]::Out.Write($zcodeArg0 + [Environment]::NewLine + $zcodeArg1)",
           values,
         ),
         { encoding: "utf8" },
@@ -80,7 +96,10 @@ describe("powershell-command", () => {
         ),
         {
           encoding: "utf8",
-          env: { ...process.env, PSModulePath: "Z:\\zcode-invalid-psmodulepath" },
+          env: {
+            ...process.env,
+            PSModulePath: "Z:\\zcode-invalid-psmodulepath",
+          },
         },
       );
 
