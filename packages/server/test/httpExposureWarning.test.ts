@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { networkInterfaces } from "node:os";
-import test from "node:test";
+import { test } from "vitest";
 import { ServiceCollection } from "@zcode/services";
 import {
   buildNonLoopbackListenWarning,
@@ -44,7 +44,9 @@ async function resolveListenPort(server: {
     : 0;
 }
 
-async function closeServer(server: { close: (callback: () => void) => unknown }): Promise<void> {
+async function closeServer(server: {
+  close: (callback: () => void) => unknown;
+}): Promise<void> {
   await new Promise<void>((resolve) => {
     server.close(() => resolve());
   });
@@ -88,7 +90,11 @@ test("回环形态穷尽：不得判定为非回环，也不得产生启动期�
 
 test("非回环启动告警必须含可操作指引，而不是只报一句绑定了", () => {
   for (const host of ["0.0.0.0", "10.122.18.101", "::"]) {
-    const warning = buildNonLoopbackListenWarning({ host, port: 38490, tokenAuth: true });
+    const warning = buildNonLoopbackListenWarning({
+      host,
+      port: 38490,
+      tokenAuth: true,
+    });
     assert.ok(warning, host + " 必须产生告警");
     const fragments = [
       "agent 级服务",
@@ -102,7 +108,10 @@ test("非回环启动告警必须含可操作指引，而不是只报一句绑�
     for (const fragment of fragments) {
       assert.ok(warning.includes(fragment), "告警缺少关键指引：" + fragment);
     }
-    assert.ok(warning.includes("bind=" + host + ":38490"), "告警必须写明真实 bind");
+    assert.ok(
+      warning.includes("bind=" + host + ":38490"),
+      "告警必须写明真实 bind",
+    );
   }
 });
 
@@ -119,10 +128,16 @@ test("运行期告警只在非回环对端且非 TLS 时出现", () => {
     null,
     "TLS（含反代 X-Forwarded-Proto: https）下不得告警",
   );
-  const warning = buildPlainHttpPeerWarning({ remoteAddress: "10.122.18.101", secure: false });
+  const warning = buildPlainHttpPeerWarning({
+    remoteAddress: "10.122.18.101",
+    secure: false,
+  });
   assert.ok(warning);
   assert.ok(warning.includes("10.122.18.101"), "必须写明对端地址");
-  assert.ok(warning.includes("将不带 Secure"), "必须写明本次会话 cookie 不带 Secure");
+  assert.ok(
+    warning.includes("将不带 Secure"),
+    "必须写明本次会话 cookie 不带 Secure",
+  );
   assert.ok(warning.includes("可信局域网"), "必须给出可信局域网口径");
 });
 
@@ -190,9 +205,12 @@ test("运行期告警只出现一次，且明文 http 请求照常成功（不�
   try {
     const warnings = await captureWarnings(async () => {
       for (let index = 0; index < 2; index += 1) {
-        const response = await fetch("http://127.0.0.1:" + port + "/api/server-info?token=task27", {
-          headers: { "x-forwarded-for": "10.122.18.101" },
-        });
+        const response = await fetch(
+          "http://127.0.0.1:" + port + "/api/server-info?token=task27",
+          {
+            headers: { "x-forwarded-for": "10.122.18.101" },
+          },
+        );
         assert.equal(response.status, 200, "明文 http 请求必须照常成功");
       }
       const loopbackPeer = await fetch(
@@ -204,8 +222,15 @@ test("运行期告警只出现一次，且明文 http 请求照常成功（不�
       assert.equal(loopbackPeer.status, 200);
     });
     const exposure = warnings.filter((entry) => entry.includes("非回环对端"));
-    assert.equal(exposure.length, 1, "运行期告警必须只出现一次，实际：" + JSON.stringify(exposure));
-    assert.ok(exposure[0].includes("将不带 Secure"), "运行期告警必须写明 cookie 不带 Secure");
+    assert.equal(
+      exposure.length,
+      1,
+      "运行期告警必须只出现一次，实际：" + JSON.stringify(exposure),
+    );
+    assert.ok(
+      exposure[0].includes("将不带 Secure"),
+      "运行期告警必须写明 cookie 不带 Secure",
+    );
   } finally {
     await closeServer(server);
   }
@@ -219,9 +244,12 @@ test("未声明可信代理时，XFF 不得伪造出「非回环对端」告警�
   const port = await resolveListenPort(server);
   try {
     const warnings = await captureWarnings(async () => {
-      const response = await fetch("http://127.0.0.1:" + port + "/api/server-info?token=task27", {
-        headers: { "x-forwarded-for": "10.122.18.101" },
-      });
+      const response = await fetch(
+        "http://127.0.0.1:" + port + "/api/server-info?token=task27",
+        {
+          headers: { "x-forwarded-for": "10.122.18.101" },
+        },
+      );
       assert.equal(response.status, 200);
     });
     assert.deepEqual(
@@ -244,9 +272,15 @@ test("反代已声明 https 时运行期不得告警（X-Forwarded-Proto）", as
   const port = await resolveListenPort(server);
   try {
     const warnings = await captureWarnings(async () => {
-      const response = await fetch("http://127.0.0.1:" + port + "/api/server-info?token=task27", {
-        headers: { "x-forwarded-for": "10.122.18.101", "x-forwarded-proto": "https" },
-      });
+      const response = await fetch(
+        "http://127.0.0.1:" + port + "/api/server-info?token=task27",
+        {
+          headers: {
+            "x-forwarded-for": "10.122.18.101",
+            "x-forwarded-proto": "https",
+          },
+        },
+      );
       assert.equal(response.status, 200);
     });
     assert.deepEqual(
