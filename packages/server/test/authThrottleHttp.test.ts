@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { WebSocket } from "ws";
 import { ServiceCollection } from "@zcode/services";
 import { createHttpServer, type HttpServerOptions } from "../src/http.js";
-import { createAuthThrottle, parseTrustedProxies } from "../src/authThrottle.js";
+import {
+  createAuthThrottle,
+  parseTrustedProxies,
+} from "../src/authThrottle.js";
 import { createAuthTokenStore } from "../src/authToken.js";
 
 /**
@@ -74,7 +77,11 @@ function probeWebSocketUpgrade(
 }
 
 test("限流：连续失败达阈值后第 N+1 次被拒（403 且原因不同于 401）", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   await withServer({ authToken: TOKEN, throttle }, async (baseUrl) => {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       const response = await fetch(baseUrl + "/api/server-info", {
@@ -84,19 +91,37 @@ test("限流：连续失败达阈值后第 N+1 次被拒（403 且原因不同�
       assert.equal(await response.text(), '{"error":"Unauthorized"}');
     }
     const blocked = await fetch(baseUrl + "/api/server-info");
-    assert.equal(blocked.status, 403, "封禁期内必须 403（拒绝服务语义，不是 401）");
+    assert.equal(
+      blocked.status,
+      403,
+      "封禁期内必须 403（拒绝服务语义，不是 401）",
+    );
     const body = await blocked.text();
-    assert.match(body, /Too many failed authentication attempts/, "必须给出可区分的原因");
-    assert.doesNotMatch(body, /Unauthorized.*Unauthorized/, "不得退化成普通 401 文案");
+    assert.match(
+      body,
+      /Too many failed authentication attempts/,
+      "必须给出可区分的原因",
+    );
+    assert.doesNotMatch(
+      body,
+      /Unauthorized.*Unauthorized/,
+      "不得退化成普通 401 文案",
+    );
 
     // 封禁期内连正确令牌也不放行：这正是「暴力破解被截断」的含义，且它必须可解释。
-    const correctTokenWhileBanned = await fetch(baseUrl + "/api/server-info?token=" + TOKEN);
+    const correctTokenWhileBanned = await fetch(
+      baseUrl + "/api/server-info?token=" + TOKEN,
+    );
     assert.equal(correctTokenWhileBanned.status, 403);
   });
 });
 
 test("限流：**伪造 X-Forwarded-For 不能绕过**（默认不采信该头）", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   await withServer({ authToken: TOKEN, throttle }, async (baseUrl) => {
     // 攻击者每次都换一个假 IP，试图让每个请求都落在新的计数桶里。
     for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -117,7 +142,11 @@ test("限流：**伪造 X-Forwarded-For 不能绕过**（默认不采信该头�
 });
 
 test("限流：显式声明可信代理时，XFF 才决定计数键（真反代部署仍按真实客户端限流）", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   await withServer(
     {
       authToken: TOKEN,
@@ -156,64 +185,100 @@ test("限流：显式声明可信代理时，XFF 才决定计数键（真反代�
 });
 
 test("限流：封禁也覆盖 WebSocket 升级请求（`/ws` 是主要攻击面，不能只在 HTTP 上拦）", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 2, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 2,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   await withServer({ authToken: TOKEN, throttle }, async (baseUrl) => {
     const wsBaseUrl = baseUrl.replace("http://", "ws://");
     assert.equal(
-      await probeWebSocketUpgrade(wsBaseUrl, { Cookie: "zcode_lite_token=wrong" }),
+      await probeWebSocketUpgrade(wsBaseUrl, {
+        Cookie: "zcode_lite_token=wrong",
+      }),
       "HTTP 401",
     );
     assert.equal(
-      await probeWebSocketUpgrade(wsBaseUrl, { Cookie: "zcode_lite_token=wrong-2" }),
+      await probeWebSocketUpgrade(wsBaseUrl, {
+        Cookie: "zcode_lite_token=wrong-2",
+      }),
       "HTTP 401",
     );
     assert.equal(
-      await probeWebSocketUpgrade(wsBaseUrl, { Cookie: "zcode_lite_token=wrong-3" }),
+      await probeWebSocketUpgrade(wsBaseUrl, {
+        Cookie: "zcode_lite_token=wrong-3",
+      }),
       "HTTP 403",
       "封禁后 WS 升级也必须被拒（否则攻击者只用 WS 通道就绕过了限流）",
     );
     // 同一个正常令牌在封禁期内也连不上（与被拒的 HTTP 路径一致）。
     assert.equal(
-      await probeWebSocketUpgrade(wsBaseUrl, { Cookie: "zcode_lite_token=" + TOKEN }),
+      await probeWebSocketUpgrade(wsBaseUrl, {
+        Cookie: "zcode_lite_token=" + TOKEN,
+      }),
       "HTTP 403",
     );
   });
 });
 
 test("限流：正常用户不受影响（偶发输错后一次正确就清零，且正确令牌照常可用）", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   await withServer({ authToken: TOKEN, throttle }, async (baseUrl) => {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       assert.equal((await fetch(baseUrl + "/api/server-info")).status, 401);
     }
     const ok = await fetch(baseUrl + "/api/server-info?token=" + TOKEN);
-    assert.equal(ok.status, 200, "输错两次后带对令牌必须仍然可用（不清零就会误伤正常用户）");
+    assert.equal(
+      ok.status,
+      200,
+      "输错两次后带对令牌必须仍然可用（不清零就会误伤正常用户）",
+    );
     assert.equal(throttle.failureCount("127.0.0.1"), 0, "成功后计数必须清零");
     // 再错两次仍远未到阈值（3）。
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       assert.equal((await fetch(baseUrl + "/api/server-info")).status, 401);
     }
-    assert.equal((await fetch(baseUrl + "/api/server-info?token=" + TOKEN)).status, 200);
+    assert.equal(
+      (await fetch(baseUrl + "/api/server-info?token=" + TOKEN)).status,
+      200,
+    );
   });
 });
 
 test("反代误伤：未声明可信代理时封禁回环会连带封掉所有客户端，且必须给出可操作告警", async () => {
-  const throttle = createAuthThrottle({ maxFailures: 2, windowMs: 60_000, banDurationMs: 60_000 });
+  const throttle = createAuthThrottle({
+    maxFailures: 2,
+    windowMs: 60_000,
+    banDurationMs: 60_000,
+  });
   const warnings: string[] = [];
-  const server = createHttpServer(new ServiceCollection(), 0, { authToken: TOKEN, throttle });
+  const server = createHttpServer(new ServiceCollection(), 0, {
+    authToken: TOKEN,
+    throttle,
+  });
   const originalWarn = console.warn;
   console.warn = (...args: unknown[]) => {
     warnings.push(args.map((value) => String(value)).join(" "));
   };
   try {
     if (!server.listening) {
-      await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+      await new Promise<void>((resolve) =>
+        server.once("listening", () => resolve()),
+      );
     }
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
     const baseUrl = "http://127.0.0.1:" + port;
     // 模拟「反代后的两个不同客户端」：未声明可信代理 ⇒ 两者都表现为 127.0.0.1。
-    assert.equal((await fetch(baseUrl + "/api/server-info")).status, 401, "客户端 A 的失败");
+    assert.equal(
+      (await fetch(baseUrl + "/api/server-info")).status,
+      401,
+      "客户端 A 的失败",
+    );
     assert.equal(
       (await fetch(baseUrl + "/api/server-info")).status,
       401,
@@ -252,7 +317,10 @@ test("令牌多源：`ZCODE_SERVER_AUTH_TOKEN` 与令牌文件里的令牌都能
       200,
       "文件令牌可用",
     );
-    assert.equal((await fetch(baseUrl + "/api/server-info?token=nope")).status, 401);
+    assert.equal(
+      (await fetch(baseUrl + "/api/server-info?token=nope")).status,
+      401,
+    );
   });
 });
 

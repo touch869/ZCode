@@ -25,8 +25,12 @@ vi.mock("electron", () => ({
     fromWebContents: h.fromWebContents,
   },
   ipcMain: {
-    handle: vi.fn((channel: string, handler: IpcHandler) => h.handlers.set(channel, handler)),
-    on: vi.fn((channel: string, handler: IpcHandler) => h.listeners.set(channel, handler)),
+    handle: vi.fn((channel: string, handler: IpcHandler) =>
+      h.handlers.set(channel, handler),
+    ),
+    on: vi.fn((channel: string, handler: IpcHandler) =>
+      h.listeners.set(channel, handler),
+    ),
   },
   shell: {
     openExternal: h.shellOpenExternal,
@@ -105,7 +109,8 @@ function createOptions(): RemoteIpcOptions {
 }
 
 async function registerOpenExternalListener() {
-  const { registerRemoteIpcHandlers } = await import("../src/main/desktopMainIpcRemote.js");
+  const { registerRemoteIpcHandlers } =
+    await import("../src/main/desktopMainIpcRemote.js");
   const options = createOptions();
   registerRemoteIpcHandlers(options);
   const listener = h.listeners.get(PlatformChannels.OpenExternal);
@@ -129,22 +134,35 @@ describe("OpenExternal 对 file URL 的分流", () => {
     listener({ sender }, "file:///E:/04%20%E7%B4%A0%E6%9D%90/page.html");
 
     await vi.waitFor(() => expect(h.shellOpenPath).toHaveBeenCalledTimes(1));
-    expect(h.shellOpenPath).toHaveBeenCalledWith(expect.stringContaining("04 素材"));
-    expect(h.shellOpenPath).toHaveBeenCalledWith(expect.stringContaining("page.html"));
-    expect(h.shellOpenPath).not.toHaveBeenCalledWith(expect.stringContaining("%"));
+    expect(h.shellOpenPath).toHaveBeenCalledWith(
+      expect.stringContaining("04 素材"),
+    );
+    expect(h.shellOpenPath).toHaveBeenCalledWith(
+      expect.stringContaining("page.html"),
+    );
+    expect(h.shellOpenPath).not.toHaveBeenCalledWith(
+      expect.stringContaining("%"),
+    );
     expect(h.shellOpenExternal).not.toHaveBeenCalled();
   });
 
-  it("带锚点的 file URL 剥掉 hash 后仍走 shell.openPath", async () => {
-    const { listener } = await registerOpenExternalListener();
-    const sender = { getURL: vi.fn(() => "about:blank") };
+  // 以下两例按 POSIX 语义书写：file:///tmp/... 在 Windows 上因无盘符抛
+  // ERR_INVALID_FILE_URL_PATH（预期行为相反），file://server/... 在 Windows 上是合法 UNC。
+  it.skipIf(process.platform === "win32")(
+    "带锚点的 file URL 剥掉 hash 后仍走 shell.openPath",
+    async () => {
+      const { listener } = await registerOpenExternalListener();
+      const sender = { getURL: vi.fn(() => "about:blank") };
 
-    listener({ sender }, "file:///tmp/report.html#section");
+      listener({ sender }, "file:///tmp/report.html#section");
 
-    await vi.waitFor(() => expect(h.shellOpenPath).toHaveBeenCalledTimes(1));
-    expect(h.shellOpenPath).not.toHaveBeenCalledWith(expect.stringContaining("#"));
-    expect(h.shellOpenExternal).not.toHaveBeenCalled();
-  });
+      await vi.waitFor(() => expect(h.shellOpenPath).toHaveBeenCalledTimes(1));
+      expect(h.shellOpenPath).not.toHaveBeenCalledWith(
+        expect.stringContaining("#"),
+      );
+      expect(h.shellOpenExternal).not.toHaveBeenCalled();
+    },
+  );
 
   it("http URL 仍走 shell.openExternal", async () => {
     const { listener } = await registerOpenExternalListener();
@@ -152,19 +170,28 @@ describe("OpenExternal 对 file URL 的分流", () => {
 
     listener({ sender }, "https://example.com/docs");
 
-    await vi.waitFor(() => expect(h.shellOpenExternal).toHaveBeenCalledTimes(1));
-    expect(h.shellOpenExternal).toHaveBeenCalledWith("https://example.com/docs");
+    await vi.waitFor(() =>
+      expect(h.shellOpenExternal).toHaveBeenCalledTimes(1),
+    );
+    expect(h.shellOpenExternal).toHaveBeenCalledWith(
+      "https://example.com/docs",
+    );
     expect(h.shellOpenPath).not.toHaveBeenCalled();
   });
 
-  it("file URL 无法转换为本地路径时记录 warn 且不回退到 shell.openExternal", async () => {
-    const { listener, options } = await registerOpenExternalListener();
-    const sender = { getURL: vi.fn(() => "about:blank") };
+  it.skipIf(process.platform === "win32")(
+    "file URL 无法转换为本地路径时记录 warn 且不回退到 shell.openExternal",
+    async () => {
+      const { listener, options } = await registerOpenExternalListener();
+      const sender = { getURL: vi.fn(() => "about:blank") };
 
-    listener({ sender }, "file://server/share/page.html");
+      listener({ sender }, "file://server/share/page.html");
 
-    await vi.waitFor(() => expect(options.logger.warn).toHaveBeenCalledTimes(1));
-    expect(h.shellOpenPath).not.toHaveBeenCalled();
-    expect(h.shellOpenExternal).not.toHaveBeenCalled();
-  });
+      await vi.waitFor(() =>
+        expect(options.logger.warn).toHaveBeenCalledTimes(1),
+      );
+      expect(h.shellOpenPath).not.toHaveBeenCalled();
+      expect(h.shellOpenExternal).not.toHaveBeenCalled();
+    },
+  );
 });
