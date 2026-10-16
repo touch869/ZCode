@@ -2,19 +2,28 @@ import { spawn } from "node:child_process";
 import { appendFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // 非 CLI 进程（Electron/Host、存储准备 Worker）只加载模块，不拦截原始入口。
 if (process.argv.includes("app-server") && process.argv.includes("--stdio")) {
   // 仅由本组 WDIO 预加载的透明 stdio 代理。真实 Host/CLI 完成保存、解析和执行；
   // 故障位于传输边界，不修改业务对象，也不记录其他 RPC 的鉴权或模型凭据。
-  const preload = `--import=${JSON.stringify(fileURLToPath(import.meta.url))}`;
+  // 防递归要同时剥掉两种预载形态：file:// URL（Windows 必需）与裸路径（POSIX 历史
+  // 形态）。只剥其中一种时，另一种调用方会让子进程再次预载本代理，无限递归 spawn。
+  const stripSelfPreload = (value) =>
+    [
+      `--import=${JSON.stringify(pathToFileURL(import.meta.url).href)}`,
+      `--import=${JSON.stringify(fileURLToPath(import.meta.url))}`,
+    ].reduce(
+      (current, preload) => current.split(preload).join(""),
+      value ?? "",
+    );
   const child = spawn(process.execPath, process.argv.slice(1), {
     stdio: ["pipe", "pipe", "inherit"],
     // 只移除当前代理预加载，保留覆盖采集等其他 Node 参数，防止递归启动代理。
     env: {
       ...process.env,
-      NODE_OPTIONS: (process.env.NODE_OPTIONS ?? "").replace(preload, "").trim(),
+      NODE_OPTIONS: stripSelfPreload(process.env.NODE_OPTIONS).trim(),
     },
   });
   const root = process.env.ZCODE_E2E_ARTIFACT_DIR;
@@ -45,7 +54,9 @@ if (process.argv.includes("app-server") && process.argv.includes("--stdio")) {
           return;
         }
         if (frame.method === "subagents/readRuntimeConfig") {
-          const state = JSON.parse(await readFile(control, "utf8").catch(() => "{}"));
+          const state = JSON.parse(
+            await readFile(control, "utf8").catch(() => "{}"),
+          );
           const sessionId = frame.params.sessionId;
           const failed = state.failedSessionIds?.includes(sessionId) === true;
           await writeLog({ kind: "read", sessionId, failed });
@@ -98,9 +109,12 @@ if (process.argv.includes("app-server") && process.argv.includes("--stdio")) {
     .on("close", () => {
       void inbound.then(() => child.stdin.end());
     });
-  for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => child.kill(signal));
+  for (const signal of ["SIGTERM", "SIGINT"])
+    process.on(signal, () => child.kill(signal));
   child.on("exit", (code) => {
-    void Promise.all([inbound, outbound]).finally(() => process.exit(code ?? 1));
+    void Promise.all([inbound, outbound]).finally(() =>
+      process.exit(code ?? 1),
+    );
   });
   // 预加载阶段等待代理子进程退出，不能再次执行当前进程原定的 CLI 入口。
   await new Promise(() => {});
