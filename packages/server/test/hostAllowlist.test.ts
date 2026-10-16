@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import { Socket } from "node:net";
 import { networkInterfaces } from "node:os";
-import test from "node:test";
+import { test } from "vitest";
 import { WebSocket } from "ws";
 import { ServiceCollection } from "@zcode/services";
 import { createHttpServer, type HttpServerOptions } from "../src/http.js";
@@ -66,7 +66,11 @@ async function withServer(
 }
 
 /** 用裸 http 请求发一个**自定义 Host**（fetch/undici 不允许覆盖 Host，只能走这一层）。 */
-function rawGet(params: { port: number; path: string; host?: string }): Promise<{
+function rawGet(params: {
+  port: number;
+  path: string;
+  host?: string;
+}): Promise<{
   status: number;
   body: string;
   headers: Record<string, string | string[] | undefined>;
@@ -92,13 +96,19 @@ function requestOnHost(params: {
         port: params.port,
         path: params.path,
         method: "GET",
-        ...(params.host === undefined ? {} : { headers: { host: params.host } }),
+        ...(params.host === undefined
+          ? {}
+          : { headers: { host: params.host } }),
       },
       (response) => {
         let body = "";
         response.on("data", (chunk) => (body += String(chunk)));
         response.on("end", () =>
-          resolve({ status: response.statusCode ?? 0, body, headers: response.headers }),
+          resolve({
+            status: response.statusCode ?? 0,
+            body,
+            headers: response.headers,
+          }),
         );
       },
     );
@@ -163,10 +173,14 @@ async function listenPort(server: {
   address: () => unknown;
 }): Promise<number> {
   if (!server.listening) {
-    await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+    await new Promise<void>((resolve) =>
+      server.once("listening", () => resolve()),
+    );
   }
   const address = server.address();
-  return typeof address === "object" && address ? Number((address as { port: number }).port) : 0;
+  return typeof address === "object" && address
+    ? Number((address as { port: number }).port)
+    : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -174,12 +188,17 @@ async function listenPort(server: {
 // ---------------------------------------------------------------------------
 
 test("解析：支持 host / host:port / [IPv6] / [IPv6]:port，非法项丢弃", () => {
-  assert.deepEqual(parseTrustedHosts("panel.example, gw.internal:8443 ,[::1],[2001:db8::5]:3030"), [
-    { host: "panel.example" },
-    { host: "gw.internal", port: 8443 },
-    { host: "::1" },
-    { host: "2001:db8::5", port: 3030 },
-  ]);
+  assert.deepEqual(
+    parseTrustedHosts(
+      "panel.example, gw.internal:8443 ,[::1],[2001:db8::5]:3030",
+    ),
+    [
+      { host: "panel.example" },
+      { host: "gw.internal", port: 8443 },
+      { host: "::1" },
+      { host: "2001:db8::5", port: 3030 },
+    ],
+  );
   for (const bad of [
     "",
     "   ",
@@ -191,7 +210,11 @@ test("解析：支持 host / host:port / [IPv6] / [IPv6]:port，非法项丢弃"
     "host:",
     // 注：`::1:3030` 不在这里 —— 它整体是合法 IPv6 字面量（见下面「拆分」用例的说明）。
   ]) {
-    assert.deepEqual(parseTrustedHosts(bad), [], JSON.stringify(bad) + " 必须被丢弃");
+    assert.deepEqual(
+      parseTrustedHosts(bad),
+      [],
+      JSON.stringify(bad) + " 必须被丢弃",
+    );
   }
 });
 
@@ -207,15 +230,26 @@ test("拆分：畸形 Host（空/路径/空白/端口非数字）⇒ null（fail
     "[::1",
     "[::1]x",
   ]) {
-    assert.equal(splitHostPort(bad), null, JSON.stringify(bad) + " 必须判为畸形");
+    assert.equal(
+      splitHostPort(bad),
+      null,
+      JSON.stringify(bad) + " 必须判为畸形",
+    );
   }
   // 注意（实现期修正过一条错误预期）：`::1:3030` **不是**畸形 —— 它整体是合法 IPv6 字面量
   // （`isIP()` 返回 6）。RFC 7230 要求 IPv6 带端口时加方括号，所以"不带方括号 + 端口"这个形态
   // 无歧义可解；我们的处理是把它当纯 IPv6 主机名，于是它永远匹配不上任何白名单条目（fail-closed）。
   // 这一点由下面两条断言钉住，而不是靠"判为畸形"。
-  assert.deepEqual(splitHostPort("::1:3030"), { host: "::1:3030" }, "整体按 IPv6 字面量解析");
+  assert.deepEqual(
+    splitHostPort("::1:3030"),
+    { host: "::1:3030" },
+    "整体按 IPv6 字面量解析",
+  );
   assert.equal(
-    evaluateHost("::1:3030", buildTrustedHostEntries({ listenHost: "127.0.0.1" })).allowed,
+    evaluateHost(
+      "::1:3030",
+      buildTrustedHostEntries({ listenHost: "127.0.0.1" }),
+    ).allowed,
     false,
     "该形态不得命中任何白名单条目（fail-closed）",
   );
@@ -241,11 +275,19 @@ test("默认白名单：回环各形态与本机网卡地址都放行（默认�
     "LOCALHOST:3030",
     "localhost.",
   ]) {
-    assert.equal(evaluateHost(host, entries).allowed, true, host + " 必须放行（回环形态）");
+    assert.equal(
+      evaluateHost(host, entries).allowed,
+      true,
+      host + " 必须放行（回环形态）",
+    );
   }
   const nic = firstNonLoopbackInterfaceAddress();
   if (nic) {
-    assert.equal(evaluateHost(nic, entries).allowed, true, nic + "（本机网卡地址）必须放行");
+    assert.equal(
+      evaluateHost(nic, entries).allowed,
+      true,
+      nic + "（本机网卡地址）必须放行",
+    );
     assert.equal(evaluateHost(nic + ":3030", entries).allowed, true);
   }
   assert.equal(
@@ -276,7 +318,9 @@ test("**伪 Host 必须被拒**（未配置域名时不得放行任意 Host）",
 });
 
 test("端口语义：登记时不写端口 ⇒ 任意端口；写了端口 ⇒ 必须相等", () => {
-  const anyPort = buildTrustedHostEntries({ configuredEntries: [{ host: "panel.example" }] });
+  const anyPort = buildTrustedHostEntries({
+    configuredEntries: [{ host: "panel.example" }],
+  });
   assert.equal(evaluateHost("panel.example:1", anyPort).allowed, true);
   assert.equal(evaluateHost("panel.example:65535", anyPort).allowed, true);
   const fixedPort = buildTrustedHostEntries({
@@ -301,7 +345,11 @@ test("缺失/畸形 Host ⇒ 拒绝（fail-closed，HTTP/1.0 无 Host 也在内�
   assert.equal(missing.allowed, false);
   assert.match(String(missing.reason), /Host 头缺失或畸形/);
   for (const bad of ["", "   ", "evil.com/path", "a b"]) {
-    assert.equal(evaluateHost(bad, entries).allowed, false, JSON.stringify(bad) + " 必须被拒");
+    assert.equal(
+      evaluateHost(bad, entries).allowed,
+      false,
+      JSON.stringify(bad) + " 必须被拒",
+    );
   }
 });
 
@@ -311,7 +359,11 @@ test("服务实际监听地址总在白名单里（绑哪张网卡就一定能�
     extraLocalAddresses: [],
     configuredEntries: [],
   });
-  assert.equal(evaluateHost("10.1.2.3", entries).allowed, true, "监听地址本身必须放行");
+  assert.equal(
+    evaluateHost("10.1.2.3", entries).allowed,
+    true,
+    "监听地址本身必须放行",
+  );
   assert.equal(evaluateHost("10.1.2.3:3030", entries).allowed, true);
 });
 
@@ -322,11 +374,27 @@ test("服务实际监听地址总在白名单里（绑哪张网卡就一定能�
 test("真实服务端：伪造 Host 403 且带拒绝标记与安全头；合法 Host 照旧", async () => {
   await withServer({ authToken: TOKEN }, async (_baseUrl, port) => {
     // 用裸 http 请求构造伪 Host（fetch 不允许覆盖 Host）。
-    const fake = await rawGet({ port, path: "/api/server-info?token=" + TOKEN, host: "evil.com" });
+    const fake = await rawGet({
+      port,
+      path: "/api/server-info?token=" + TOKEN,
+      host: "evil.com",
+    });
     assert.equal(fake.status, 403, "伪 Host 必须 403");
-    assert.match(fake.body, /ZCODE_SERVER_TRUSTED_HOSTS/, "403 必须给出可操作原因");
-    assert.equal(fake.headers["x-zcode-host-rejected"], "1", "必须带拒绝标记头");
-    assert.equal(fake.headers["x-content-type-options"], "nosniff", "拒绝响应也必须带安全头");
+    assert.match(
+      fake.body,
+      /ZCODE_SERVER_TRUSTED_HOSTS/,
+      "403 必须给出可操作原因",
+    );
+    assert.equal(
+      fake.headers["x-zcode-host-rejected"],
+      "1",
+      "必须带拒绝标记头",
+    );
+    assert.equal(
+      fake.headers["x-content-type-options"],
+      "nosniff",
+      "拒绝响应也必须带安全头",
+    );
 
     const legit = await rawGet({
       port,
@@ -335,8 +403,15 @@ test("真实服务端：伪造 Host 403 且带拒绝标记与安全头；合法 
     });
     assert.equal(legit.status, 200, "合法 Host（回环 + 真实端口）必须照旧");
 
-    const noHost = await rawGet({ port, path: "/api/server-info?token=" + TOKEN });
-    assert.equal(noHost.status, 200, "不显式设置 Host 时 Node 会自动带 127.0.0.1:port ⇒ 放行");
+    const noHost = await rawGet({
+      port,
+      path: "/api/server-info?token=" + TOKEN,
+    });
+    assert.equal(
+      noHost.status,
+      200,
+      "不显式设置 Host 时 Node 会自动带 127.0.0.1:port ⇒ 放行",
+    );
 
     // 这里只验「不匹配就拒」，避免嵌套起服务把断言意图搅浑。
   });
@@ -345,7 +420,9 @@ test("真实服务端：伪造 Host 403 且带拒绝标记与安全头；合法 
 test("真实服务端：**WebSocket 升级的 Host 也必须校验**（/ws 绕过中间件通道）", async () => {
   // 这条是「有人把 Host 校验挪回中间件」这类回归的唯一护栏：中间件里返回的 403 在升级路径上
   // 会被 node-ws 的适配器丢掉响应体与响应头（A-1 实测），所以校验必须留在 HTTP 层。
-  const server = createHttpServer(new ServiceCollection(), 0, { authToken: TOKEN });
+  const server = createHttpServer(new ServiceCollection(), 0, {
+    authToken: TOKEN,
+  });
   try {
     const port = await listenPort(server);
     const fake = await probeWebSocketUpgrade(port, {
@@ -353,9 +430,17 @@ test("真实服务端：**WebSocket 升级的 Host 也必须校验**（/ws 绕�
       Cookie: "zcode_lite_token=" + TOKEN,
     });
     assert.equal(fake.result, "HTTP 403", "伪 Host 的 WS 升级必须 403");
-    assert.match(fake.body, /ZCODE_SERVER_TRUSTED_HOSTS/, "拒绝必须给出可操作原因（不是空 403）");
+    assert.match(
+      fake.body,
+      /ZCODE_SERVER_TRUSTED_HOSTS/,
+      "拒绝必须给出可操作原因（不是空 403）",
+    );
     assert.equal(fake.headers["x-zcode-host-rejected"], "1");
-    assert.equal(fake.headers["x-content-type-options"], "nosniff", "升级拒绝也必须带安全头");
+    assert.equal(
+      fake.headers["x-content-type-options"],
+      "nosniff",
+      "升级拒绝也必须带安全头",
+    );
 
     const legit = await probeWebSocketUpgrade(port, {
       host: "127.0.0.1:" + port,
@@ -383,7 +468,11 @@ test("真实服务端：登记反代域名后该 Host 必须放行（加固不�
         path: "/api/server-info?token=" + TOKEN,
         host: "panel.example:8443",
       });
-      assert.equal(withPort.status, 200, "未写端口的登记项应接受任意端口（文档写明的语义）");
+      assert.equal(
+        withPort.status,
+        200,
+        "未写端口的登记项应接受任意端口（文档写明的语义）",
+      );
 
       const otherHost = await rawGet({
         port,
@@ -398,7 +487,10 @@ test("真实服务端：登记反代域名后该 Host 必须放行（加固不�
 test("真实服务端：绑本机非回环网卡 + 用该网卡 IP 访问必须照旧（默认绑局域网仍可用）", async () => {
   const nic = firstNonLoopbackInterfaceAddress();
   const bindHost = nic ?? "127.0.0.1";
-  const server = createHttpServer(new ServiceCollection(), 0, { host: bindHost, authToken: TOKEN });
+  const server = createHttpServer(new ServiceCollection(), 0, {
+    host: bindHost,
+    authToken: TOKEN,
+  });
   try {
     const port = await listenPort(server);
     // 必须连**绑定的那个地址**：绑在网卡上时回环口根本不监听（第一版写成 rawGet 连 127.0.0.1，
@@ -435,29 +527,38 @@ async function withServerReturning<T>(
 
 // 保留一个显式的「无 Host 原始请求」用例：用裸 socket 发 HTTP/1.1 且不带 Host 头。
 test("原始 socket：HTTP/1.1 不带 Host ⇒ 被拒（实测 Node 解析器先返回 400，两者都是 fail-closed）", async () => {
-  const server = createHttpServer(new ServiceCollection(), 0, { authToken: TOKEN });
+  const server = createHttpServer(new ServiceCollection(), 0, {
+    authToken: TOKEN,
+  });
   try {
     const port = await listenPort(server);
-    const response = await new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const client = new Socket();
-      let buffer = "";
-      client.on("error", reject);
-      client.connect(port, "127.0.0.1", () => {
-        // 故意只发请求行 + 一个空行：没有 Host。
-        client.write("GET /api/server-info HTTP/1.1\r\nConnection: close\r\n\r\n");
-      });
-      client.on("data", (chunk: Buffer) => (buffer += chunk.toString()));
-      client.on("end", () => {
-        const status = Number((/HTTP\/1\.1 (\d+)/.exec(buffer) ?? [])[1] ?? 0);
-        resolve({ status, body: buffer });
-      });
-    });
+    const response = await new Promise<{ status: number; body: string }>(
+      (resolve, reject) => {
+        const client = new Socket();
+        let buffer = "";
+        client.on("error", reject);
+        client.connect(port, "127.0.0.1", () => {
+          // 故意只发请求行 + 一个空行：没有 Host。
+          client.write(
+            "GET /api/server-info HTTP/1.1\r\nConnection: close\r\n\r\n",
+          );
+        });
+        client.on("data", (chunk: Buffer) => (buffer += chunk.toString()));
+        client.on("end", () => {
+          const status = Number(
+            (/HTTP\/1\.1 (\d+)/.exec(buffer) ?? [])[1] ?? 0,
+          );
+          resolve({ status, body: buffer });
+        });
+      },
+    );
     // 实测：Node 的 HTTP 解析器对「HTTP/1.1 且无 Host」直接判 400 Bad Request，
     // 我们的白名单中间件根本不会被调用。两者都是 fail-closed，所以断言接受 400/403，
     // 但**明确不接受 200** —— 那才是这条链敞开的样子。
     assert.ok(
       response.status === 400 || response.status === 403,
-      "不带 Host 的 HTTP/1.1 请求必须被拒（实测 400/403），实际 " + String(response.status),
+      "不带 Host 的 HTTP/1.1 请求必须被拒（实测 400/403），实际 " +
+        String(response.status),
     );
     assert.notEqual(response.status, 200);
   } finally {

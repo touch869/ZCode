@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { createAuditLog, type AuditEvent } from "../src/auditLog.js";
 
 /**
@@ -20,7 +20,11 @@ function captureAudit(options?: Parameters<typeof createAuditLog>[0]) {
   });
   const parsed = () =>
     lines.map(
-      (line) => JSON.parse(line.text.slice(line.text.indexOf("{"))) as Record<string, unknown>,
+      (line) =>
+        JSON.parse(line.text.slice(line.text.indexOf("{"))) as Record<
+          string,
+          unknown
+        >,
     );
   return { audit, lines, parsed };
 }
@@ -100,7 +104,11 @@ test("高频事件：窗口内超上限不逐条写，但**计数不丢**（窗�
     firstAt: string;
     lastAt: string;
   };
-  assert.equal(summary.count, 10, "汇总计数必须等于窗口内实际事件数（一条都不能丢）");
+  assert.equal(
+    summary.count,
+    10,
+    "汇总计数必须等于窗口内实际事件数（一条都不能丢）",
+  );
   assert.equal(summary.windowMs, 1_000);
   assert.match(summary.firstAt, /^\d{4}-/);
   // 明细 3 条 + 汇总 1 条 + 新窗口首条 1 条 = 5 条日志，而不是 11 条。
@@ -112,9 +120,21 @@ test("不同对端不合并（多源扫描必须看得见）", () => {
     coalesceWindowMs: 10_000,
     coalesceMaxEventsPerWindow: 1,
   });
-  audit.record({ kind: "audit:auth-failure", peer: "198.51.100.1", reason: "r" });
-  audit.record({ kind: "audit:auth-failure", peer: "198.51.100.2", reason: "r" });
-  audit.record({ kind: "audit:auth-failure", peer: "198.51.100.3", reason: "r" });
+  audit.record({
+    kind: "audit:auth-failure",
+    peer: "198.51.100.1",
+    reason: "r",
+  });
+  audit.record({
+    kind: "audit:auth-failure",
+    peer: "198.51.100.2",
+    reason: "r",
+  });
+  audit.record({
+    kind: "audit:auth-failure",
+    peer: "198.51.100.3",
+    reason: "r",
+  });
   assert.equal(audit.pendingKeyCount(), 3, "三个对端 = 三个独立的合并窗口");
   assert.deepEqual(
     parsed().map((event) => event.peer),
@@ -124,9 +144,21 @@ test("不同对端不合并（多源扫描必须看得见）", () => {
 
 test("flush：进程退出前写出窗口内计数（不丢）", () => {
   const { audit, parsed } = captureAudit({ coalesceMaxEventsPerWindow: 1 });
-  audit.record({ kind: "audit:origin-rejected", peer: "203.0.113.7", reason: "跨站" });
-  audit.record({ kind: "audit:origin-rejected", peer: "203.0.113.7", reason: "跨站" });
-  audit.record({ kind: "audit:origin-rejected", peer: "203.0.113.7", reason: "跨站" });
+  audit.record({
+    kind: "audit:origin-rejected",
+    peer: "203.0.113.7",
+    reason: "跨站",
+  });
+  audit.record({
+    kind: "audit:origin-rejected",
+    peer: "203.0.113.7",
+    reason: "跨站",
+  });
+  audit.record({
+    kind: "audit:origin-rejected",
+    peer: "203.0.113.7",
+    reason: "跨站",
+  });
   audit.flush();
   const summary = parsed().find(
     (event) => typeof event.coalesced === "object" && event.coalesced !== null,
@@ -168,7 +200,10 @@ test("**否定式**：令牌字面量、查询串、cookie、Origin 绝不进日
     assert.equal(
       text.includes(forbidden),
       false,
-      "审计日志不得包含 " + JSON.stringify(forbidden) + "；实际：" + text.slice(0, 200),
+      "审计日志不得包含 " +
+        JSON.stringify(forbidden) +
+        "；实际：" +
+        text.slice(0, 200),
     );
   }
   // 反向自检：断言本身有牙齿 —— 同一段文本里确实能找到我们**期望**出现的字段。
@@ -177,20 +212,27 @@ test("**否定式**：令牌字面量、查询串、cookie、Origin 绝不进日
     /"tokenLabels":\["<env>","手机"\]/,
     "标签必须写进去（否则排障时不知道撤销了谁）",
   );
-  assert.match(text, /"path":"\/api\/server-info"/, "路径必须写进去（不含查询串）");
+  assert.match(
+    text,
+    /"path":"\/api\/server-info"/,
+    "路径必须写进去（不含查询串）",
+  );
 });
 
 test("审计写入失败不影响调用方，且不静默（fail-loud）", () => {
   const errors: string[] = [];
   const originalError = console.error;
-  console.error = (...args: unknown[]) => errors.push(args.map(String).join(" "));
+  console.error = (...args: unknown[]) =>
+    errors.push(args.map(String).join(" "));
   try {
     const audit = createAuditLog({
       write: () => {
         throw new Error("sink 坏了");
       },
     });
-    assert.doesNotThrow(() => audit.record({ kind: "audit:ws-open", peer: "p" }));
+    assert.doesNotThrow(() =>
+      audit.record({ kind: "audit:ws-open", peer: "p" }),
+    );
     assert.equal(errors.length, 1, "写入失败必须留下 error（不静默）");
     assert.match(errors[0]!, /审计写入失败/);
   } finally {

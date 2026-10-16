@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   createAuthThrottle,
   isTrustedProxy,
@@ -19,7 +19,9 @@ import {
  */
 
 test("可信代理解析：IP 与 CIDR 都接受，非法项被丢弃", () => {
-  const ranges = parseTrustedProxies("127.0.0.1, 10.0.0.0/8 ,bad-entry, 192.168.0.0/33,,::1");
+  const ranges = parseTrustedProxies(
+    "127.0.0.1, 10.0.0.0/8 ,bad-entry, 192.168.0.0/33,,::1",
+  );
   assert.equal(ranges.length, 3, "非法项（域名、超长前缀、空项）必须被丢弃");
   const probe = (address: string) => isTrustedProxy(address, ranges);
   assert.equal(probe("127.0.0.1"), true);
@@ -40,7 +42,11 @@ test("可信代理解析：IPv6 CIDR 按位比较（含内嵌 IPv4 与 zone）",
   assert.equal(probe("::ffff:127.0.0.1"), true, "内嵌 IPv4 形式必须能匹配");
   assert.equal(probe("fe80::1%eth0"), false);
   assert.equal(parseTrustedProxies("::/0").length, 1, "全零前缀必须被接受");
-  assert.equal(isTrustedProxy("1.2.3.4", parseTrustedProxies("::/0")), false, "族不同不得匹配");
+  assert.equal(
+    isTrustedProxy("1.2.3.4", parseTrustedProxies("::/0")),
+    false,
+    "族不同不得匹配",
+  );
   assert.equal(isTrustedProxy("::1", parseTrustedProxies("::/0")), true);
 });
 
@@ -87,7 +93,12 @@ test("对端地址：socket 是可信代理时从右往左取第一个不可信�
 
 test("对端地址：XFF 畸形（带端口/域名/垃圾）⇒ 退回 socket，不给伪造留缝", () => {
   const trusted = parseTrustedProxies("127.0.0.1");
-  for (const forwardedFor of ["198.51.100.9:1234", "evil.example", "not-an-ip", "<script>"]) {
+  for (const forwardedFor of [
+    "198.51.100.9:1234",
+    "evil.example",
+    "not-an-ip",
+    "<script>",
+  ]) {
     assert.equal(
       resolveClientAddress({
         socketAddress: "127.0.0.1",
@@ -111,7 +122,11 @@ test("限流：连续失败到阈值后第 N+1 次被拒，封禁到期自动恢
   const ip = "203.0.113.7";
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    assert.equal(throttle.check(ip).allowed, true, "第 " + attempt + " 次尝试前仍允许");
+    assert.equal(
+      throttle.check(ip).allowed,
+      true,
+      "第 " + attempt + " 次尝试前仍允许",
+    );
     assert.equal(throttle.recordFailure(ip), false, "未到阈值不得封禁");
   }
   assert.equal(throttle.check(ip).allowed, true);
@@ -121,13 +136,21 @@ test("限流：连续失败到阈值后第 N+1 次被拒，封禁到期自动恢
   assert.equal(throttle.bannedCount(), 1);
 
   now += 30_001;
-  assert.equal(throttle.check(ip).allowed, true, "封禁到期后必须自动恢复（不能永久锁死）");
+  assert.equal(
+    throttle.check(ip).allowed,
+    true,
+    "封禁到期后必须自动恢复（不能永久锁死）",
+  );
   assert.equal(throttle.bannedCount(), 0);
 });
 
 test("限流：成功即清零（正常用户偶发输错不会累积到阈值）", () => {
   let now = 0;
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 60_000, now: () => now });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 60_000,
+    now: () => now,
+  });
   const ip = "203.0.113.8";
   throttle.recordFailure(ip);
   throttle.recordFailure(ip);
@@ -135,24 +158,44 @@ test("限流：成功即清零（正常用户偶发输错不会累积到阈值�
   throttle.recordSuccess(ip);
   assert.equal(throttle.failureCount(ip), 0);
   assert.equal(throttle.check(ip).allowed, true);
-  assert.equal(throttle.recordFailure(ip), false, "清零后重新计数，不得立即封禁");
+  assert.equal(
+    throttle.recordFailure(ip),
+    false,
+    "清零后重新计数，不得立即封禁",
+  );
 });
 
 test("限流：窗口过期后计数重置（不会因为「很久以前失败过几次」而在某天突然被封）", () => {
   let now = 0;
-  const throttle = createAuthThrottle({ maxFailures: 3, windowMs: 10_000, now: () => now });
+  const throttle = createAuthThrottle({
+    maxFailures: 3,
+    windowMs: 10_000,
+    now: () => now,
+  });
   const ip = "203.0.113.9";
   throttle.recordFailure(ip);
   throttle.recordFailure(ip);
   now += 10_001;
-  assert.equal(throttle.recordFailure(ip), false, "窗口过期后计数应从 1 重新开始");
+  assert.equal(
+    throttle.recordFailure(ip),
+    false,
+    "窗口过期后计数应从 1 重新开始",
+  );
   assert.equal(throttle.failureCount(ip), 1);
 });
 
 test("限流：地址缺失/不同地址互不牵连，跟踪表有上界（不因伪造地址无界增长）", () => {
-  const throttle = createAuthThrottle({ maxFailures: 2, maxTrackedClients: 4, now: () => 0 });
+  const throttle = createAuthThrottle({
+    maxFailures: 2,
+    maxTrackedClients: 4,
+    now: () => 0,
+  });
   assert.equal(throttle.check(undefined).allowed, true);
-  assert.equal(throttle.recordFailure(undefined), false, "没有地址时不得误判为某个地址失败");
+  assert.equal(
+    throttle.recordFailure(undefined),
+    false,
+    "没有地址时不得误判为某个地址失败",
+  );
   throttle.recordFailure("a");
   throttle.recordFailure("b");
   assert.equal(throttle.failureCount("a"), 1);
