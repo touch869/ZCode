@@ -33,3 +33,16 @@ export function isRealComputerUseProducerInstalled({ desktopPackageRoot }) {
   const producer = readComputerUseProducer({ desktopPackageRoot });
   return producer.installed && !producer.placeholder;
 }
+
+/**
+ * relay-official：真实 producer 是否发布官方 Windows Helper 运行时契约（zcodeCuaRuntime）。
+ * 官方闭源线的 producer 附带 Helper EXE 契约；本线的 producer 由进程内 @trycua 驱动提供
+ * Computer Use，不发布 Helper 运行时 —— Helper 暂存/打包/签名校验等只服务于 Helper 的
+ * 步骤都应在本判定为 false 时跳过，而不是把「无契约」误判成 producer 回归。
+ */
+export function producerShipsWindowsHelperRuntime({ desktopPackageRoot }) {
+  const producer = readComputerUseProducer({ desktopPackageRoot });
+  return (
+    producer.installed && !producer.placeholder && producer.manifest?.zcodeCuaRuntime !== undefined
+  );
+}
