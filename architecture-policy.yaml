@@ -1210,6 +1210,20 @@ exceptions:
     paths:
       - apps/zcode-cli/packages/node-repl-host/src/cua-broker.ts
     reason: 已准入的 node_repl CUA broker 仅增透传可选 actionTitle 字段（node_repl cell title → badge 文字，docs/cua/producer/multi-session-cursor-overlay-spec.md §4.8）——cua-broker 按 ledger meta 构建的 requestContext 注入、parseContext 白名单补字段；签名、broker 形态与模块边界不变，不接管 zcode-cli 目录。
+  - id: relay-official-server-security-ports
+    rule: unmanaged-new-file
+    paths:
+      [packages/server/src/auditLog.ts, packages/server/src/authThrottle.ts, packages/server/src/authToken.ts, packages/server/src/hostAllowlist.ts, packages/server/src/webExposureGuard.ts]
+    reason: relay-official 线自 CE v3.14.4-ce.2 移植的 http 入口安全批次（多令牌热重载、限流、Host 白名单、跨源守卫、审计流）；文件落在上游 server 包目录内、随上游演进合并，接管整个 server 模块不在本线范围内。
+  - id: relay-official-open-cua-driver-files
+    rule: unmanaged-new-file
+    paths:
+      [packages/zcode-cua/cua-driver-actions.js, packages/zcode-cua/cua-driver-errors.js, packages/zcode-cua/cua-driver-runtime.js, packages/zcode-cua/cua-driver-targets.js]
+    reason: relay-official 线的 @trycua 开源驱动运行时面（cua-driver-runtime 由 node-repl-host 进程内加载）；该包其余 broker/pip-session 契约文件与上游保持一致，仅驱动面为本线新增，不因此接管整个 zcode-cua 包。
+  - id: relay-official-telemetry-stub-seam
+    rule: unmanaged-new-file
+    paths: [packages/desktop/src/main/databaseStartupTelemetry.ts]
+    reason: relay-official 线移除 ARMS 遥测后的兼容桩（上游 databaseStartupRelay 仍 import reportDatabaseStartupState）；上游 3.16.2 新引入该文件而被本线改为 no-op 桩，属刻意的遥测移除接缝，不引入新边界。
   - id: side-pane-full-view-shortcut-command-edit
     rule: unmanaged-new-file
     paths: [packages/shared/src/shortcutCommands.ts]
