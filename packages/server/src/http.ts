@@ -1025,8 +1025,6 @@ export function createHttpServer(
   // 都不能再把自己提升为 trusted host。
   app.get(
     "/ws",
-  app.get(
-    "/ws",
     upgradeWebSocket((c) => {
       // `createEvents` 在升级时执行，是我们还能拿到 Context 的最后一站 ⇒ 审计上下文在这里算好。
       const auditContext = buildConnectionAuditContext(c);

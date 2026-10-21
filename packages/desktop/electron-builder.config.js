@@ -23,7 +23,10 @@ import {
 } from "./scripts/desktop-product-identity.mjs";
 import { createWindowsPowerShellSecurityArgs } from "./scripts/powershell-command.mjs";
 import { isSharpRequiredByComputerUse, verifyStagedSharp } from "./scripts/sharp-package-assets.mjs";
-import { isRealComputerUseProducerInstalled } from "./scripts/computer-use-producer.mjs";
+import {
+  isRealComputerUseProducerInstalled,
+  producerShipsWindowsHelperRuntime,
+} from "./scripts/computer-use-producer.mjs";
 import { verifyStagedKoffi } from "./scripts/koffi-package-assets.mjs";
 import {
   finalizePackagedWindowsCuaHelper,
@@ -63,7 +66,11 @@ const shouldEnableMacSigning =
 const workspaceRoot = resolve(import.meta.dirname, "../..");
 const desktopPackageRoot = import.meta.dirname;
 // Computer Use Helper（macOS .app、Windows runtime）只随真实 producer 打包；开源占位包下跳过随包资源与校验。
-const shouldPackageComputerUseHelper = isRealComputerUseProducerInstalled({ desktopPackageRoot });
+// relay-official：本线 Computer Use 由进程内 @trycua 驱动提供，producer 不发布官方
+// Windows Helper 运行时契约 —— Helper 打包/签名/校验在无契约时整体跳过。
+const shouldPackageComputerUseHelper =
+  isRealComputerUseProducerInstalled({ desktopPackageRoot }) &&
+  producerShipsWindowsHelperRuntime({ desktopPackageRoot });
 const HELPER_FILENAME = "zcode-browser-import-helper.exe";
 const runtimeModuleLookupRoots = [
   desktopPackageRoot,
