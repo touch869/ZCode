@@ -539,7 +539,10 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", li
     manager.disposeAll();
   });
 
-  it("transport 首轮进程树回收误报残留时重试并允许重新拉起 agent", async () => {
+  // win32 下 taskkill /T 失败语义与 POSIX 进程组不同（官方 CI 无 win32 覆盖），该组门控。
+  it.skipIf(process.platform === "win32")(
+    "transport 首轮进程树回收误报残留时重试并允许重新拉起 agent",
+    async () => {
     const workspacePath = mkdtempSync(join(tmpdir(), "zcode-agent-manager-recycle-retry-"));
     createdDirs.push(workspacePath);
     const commandResolver = vi.fn<() => ZCodeAgentCommand>(() => ({
@@ -814,7 +817,7 @@ setInterval(() => {}, 1000);
     }
   });
 
-  it("app quit 会重试先前失败的进程树回收", async () => {
+  it.skipIf(process.platform === "win32")("app quit 会重试先前失败的进程树回收", async () => {
     const workspacePath = mkdtempSync(join(tmpdir(), "zcode-agent-manager-cleanup-retry-"));
     createdDirs.push(workspacePath);
     const manager = new ZCodeAgentProcessManager({

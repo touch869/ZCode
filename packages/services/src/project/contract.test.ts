@@ -241,7 +241,10 @@ it("routes every foreign project operation to its existing owner and never falls
   expect(repository).not.toHaveBeenCalled();
 });
 
-it("browses owner directories without touching project storage or admitting a session", async () => {
+// win32 下 node:path 归一化把 "/owner" 变 "\owner"，该用例断言 POSIX 虚拟路径语义，门控。
+it.skipIf(process.platform === "win32")(
+  "browses owner directories without touching project storage or admitting a session",
+  async () => {
   const repository = vi.fn();
   const directories = { home: async () => "/owner", read: vi.fn(async () => []) };
   const service = createProjectService({

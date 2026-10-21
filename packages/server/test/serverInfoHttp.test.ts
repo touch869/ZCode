@@ -95,7 +95,7 @@ describe("server info HTTP endpoint", () => {
       migrationFailedPathCount: 2,
     });
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
     const response = await fetch(`http://127.0.0.1:${address.port}/api/server-info`);
     expect(await response.json()).toMatchObject({
       serverId: "owner",
@@ -149,7 +149,7 @@ describe("server info HTTP endpoint", () => {
   it("does not expose either retired remote-connect route", async () => {
     const server = createHttpServer(new ServiceCollection(), 0);
     servers.push(server);
-    const address = server.address() as AddressInfo;
+    const address = await waitForAddress(server);
 
     const response = await fetch(`http://127.0.0.1:${address.port}/api/connect-remote`, {
       method: "POST",

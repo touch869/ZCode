@@ -80,6 +80,13 @@ describe("static route path containment", () => {
       spaFallback: true,
     });
     servers.push(server);
+    // 指定 hostname 时 listen 异步绑定，必须等 listening 事件端口才可用。
+    if (!server.listening) {
+      await new Promise<void>((resolve, reject) => {
+        server.once("listening", resolve);
+        server.once("error", reject);
+      });
+    }
     return (server.address() as AddressInfo).port;
   }
 

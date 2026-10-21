@@ -57,7 +57,8 @@ describe("Source Server remote release assets", () => {
       version: "3.8.0",
     });
 
-    expect(collected.map((path) => path.split("/").at(-1))).toEqual(
+    // win32 收集到的是反斜杠绝对路径：按两种分隔符取 basename（POSIX 归档名不变）。
+    expect(collected.map((path) => path.split(/[\\/]/).at(-1))).toEqual(
       SOURCE_SERVER_REMOTE_RELEASE_TARGETS.map((target) => `zcode-server-${target}.tar.gz`),
     );
     await expect(

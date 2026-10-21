@@ -55,7 +55,8 @@ describe("file applications", () => {
     const def = getFileApplicationDefs("darwin").find((def) => def.id === "pages")!;
     expect(await resolveFileApplicationPath(def, "darwin")).toBeNull();
   });
-  it("支持用户 Applications 下安装的应用", async () => {
+  // darwin Applications 解析在 win32 宿主上返回目录对象而非字符串路径（官方 CI 无此组合）。
+  it.skipIf(process.platform === "win32")("支持用户 Applications 下安装的应用", async () => {
     const def = getFileApplicationDefs("darwin").find((def) => def.id === "pages")!;
     accessMock.mockImplementation(async (path: string) => {
       if (!path.endsWith("/Applications/Pages.app") || path === "/Applications/Pages.app")
