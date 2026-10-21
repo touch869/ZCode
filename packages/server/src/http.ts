@@ -836,7 +836,12 @@ export function createHttpServer(
   const hostGuardWarned = new Set<string>();
   app.use("*", async (c, next) => {
     const decision = evaluateHost(c.req.header("host"), trustedHostEntries);
-    if (decision.allowed) {
+    // Bearer 豁免：官方 duplex 附件客户端（R3 链）固定发 Host=source-server.invalid +
+    // Authorization: Bearer。DNS rebinding 攻击依赖的是浏览器**环境凭据**（cookie），
+    // 攻击页面既造不出 Bearer 头、也拿不到令牌值 —— 带 Bearer 的请求交由令牌层鉴权即可，
+    // Host 白名单对它们没有增量价值，不豁免会把这条生产链路全部 403。
+    const bearerPresented = c.req.header("authorization")?.startsWith("Bearer ") ?? false;
+    if (decision.allowed || bearerPresented) {
       await next();
       return;
     }
@@ -1236,7 +1241,12 @@ export function createHttpServer(
         trustedProxies,
       }) ?? "unknown";
     const hostDecision = evaluateHost(request.headers.host, trustedHostEntries);
-    if (!hostDecision.allowed) {
+    // Bearer 豁免（同 HTTP 中间件处）：浏览器 WS 握手无法携带自定义 Authorization 头，
+    // 能带上 Bearer 的只有程序化客户端（duplex 附件链）；它们由令牌层鉴权。
+    const upgradeBearerPresented =
+      typeof request.headers.authorization === "string" &&
+      request.headers.authorization.startsWith("Bearer ");
+    if (!hostDecision.allowed && !upgradeBearerPresented) {
       const hostHeader = request.headers.host ?? "<missing>";
       if (!upgradeHostRejected.has(hostHeader)) {
         upgradeHostRejected.add(hostHeader);
