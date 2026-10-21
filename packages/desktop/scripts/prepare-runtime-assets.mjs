@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import { resolveNativeSearchReleasePlan } from "../../../scripts/native-search-tools-config.mjs";
 import { runCommand } from "../../../scripts/spawn-command.mjs";
 import { getTargetPlatform } from "./target-platform.mjs";
-import { isRealComputerUseProducerInstalled } from "./computer-use-producer.mjs";
+import {
+  isRealComputerUseProducerInstalled,
+  producerShipsWindowsHelperRuntime,
+} from "./computer-use-producer.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(scriptDir, "..");
@@ -22,7 +25,10 @@ const shouldPrepareWindowsBrowserImportHelper =
   target.os === "win32" && process.env.ZCODE_ENABLE_WINDOWS_BROWSER_IMPORT === "1";
 // Windows Computer Use Helper 由真实 producer 提供；开源占位包没有 Helper runtime，跳过准备。
 const shouldPrepareWindowsCuaHelper =
-  target.os === "win32" && isRealComputerUseProducerInstalled({ desktopPackageRoot: desktopRoot });
+  target.os === "win32" &&
+  isRealComputerUseProducerInstalled({ desktopPackageRoot: desktopRoot }) &&
+  // relay-official：无 zcodeCuaRuntime 契约 = 无 Helper 可暂存（进程内驱动线），跳过。
+  producerShipsWindowsHelperRuntime({ desktopPackageRoot: desktopRoot });
 // CUA 权限浮窗的吸附数据源。仅 macOS；缺 swiftc 时脚本内部自行降级为跳过（浮窗 fail-open
 // 到屏幕底部，仍可用），所以无条件挂在 darwin 上不会让构建变脆。
 const shouldPrepareMacosWindowBounds = target.os === "darwin";
