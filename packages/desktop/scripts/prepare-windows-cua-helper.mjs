@@ -28,6 +28,19 @@ const sourceRoot = await resolveWindowsCuaHelperSourceRoot({
   devRoot: process.env.ZCODE_CUA_DEV_ROOT,
   servicesPackageRoot,
 });
+// relay-official：本线 producer 不发布官方 Windows Helper 运行时契约（Computer Use 由
+// 进程内 @trycua 驱动提供）。无契约时跳过 Helper 暂存，而不是把它当 producer 回归报错。
+const producerManifest = JSON.parse(
+  await readFile(resolve(sourceRoot, "package.json"), "utf8"),
+);
+if (producerManifest.zcodeCuaRuntime === undefined) {
+  console.log(
+    "[prepare-windows-cua-helper] producer ships no zcodeCuaRuntime contract — " +
+      "Computer Use runs via the in-process open driver, skip Helper staging",
+  );
+  process.exit(0);
+}
+
 const result = await prepareWindowsCuaHelperAssets({
   sourceRoot,
   outputRoot: resolve(desktopPackageRoot, "bundled-tools"),
