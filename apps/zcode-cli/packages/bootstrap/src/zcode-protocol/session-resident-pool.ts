@@ -6,7 +6,9 @@
 
 export const DEFAULT_SESSION_RESIDENT_TARGET_COUNT = 8;
 export const DEFAULT_SESSION_RESIDENT_HIGH_WATER_COUNT = 16;
-export const DEFAULT_SESSION_RESIDENT_IDLE_TIMEOUT_MS = 10 * 60 * 1_000;
+// 会话切换体验：idle TTL 10min→60min，切回 1h 内的会话不付冷恢复（全量读库×3）。
+// 内存上界不变（target 8 / high-water 16 的 LRU 收敛仍生效）。
+export const DEFAULT_SESSION_RESIDENT_IDLE_TIMEOUT_MS = 60 * 60 * 1_000;
 
 export type SessionDeactivationReason = "high_water_lru" | "idle_timeout";
 

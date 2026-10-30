@@ -24,11 +24,14 @@ export interface SessionLease {
 
 export interface SessionDataLayerOptions {
   transport: ConversationTransport;
-  /** 引用归零后延迟退订窗口（ms），默认 30s。 */
+  /** 引用归零后延迟退订窗口（ms），默认 10min。 */
   keepWarmMs?: number;
 }
 
-export const SESSION_DATA_LAYER_KEEP_WARM_MS = 30_000;
+// 会话切换体验：30s→10min。只保 10min 是刻意的：宽屏 loadAllOlder 会把整段历史
+// 拉进 renderer 内存，1h 级 keep-warm 会让多个大会话的投影 store 常驻叠加；
+// 更长的"热"由 CLI 侧常驻池（1h idle TTL）承担，渲染层只负责高频往返场景。
+export const SESSION_DATA_LAYER_KEEP_WARM_MS = 10 * 60 * 1_000;
 export const E2E_SESSION_DATA_LAYER_KEEP_WARM_MS = 1_000;
 
 export function resolveSessionDataLayerKeepWarmMs(
