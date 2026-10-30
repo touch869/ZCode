@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  accessSync,
   chmodSync,
   copyFileSync,
   mkdirSync,
@@ -35,6 +36,22 @@ function resolveTarArchiveArg(archivePath, cwd) {
   return toTarPosixPath(archivePath);
 }
 
+// Windows 下 PATH 常解析到 Git 的 MSYS GNU tar：node 直 spawn 时它对 ../ 链和 C:/ 绝对
+// 路径都会踩坑（盘符冒号当远程主机名；多级 ../ 相对路径直 spawn 下解析失败）。
+// System32 的 bsdtar 是 Windows 原生实现，C:/ 绝对路径直接可用——win32 优先指名使用。
+function resolveTarCommand(platform = process.platform) {
+  if (platform === "win32") {
+    const windowsBsdtar = "C:\\Windows\\System32\\tar.exe";
+    try {
+      accessSync(windowsBsdtar);
+      return windowsBsdtar;
+    } catch {
+      // 无 System32 tar（老系统）时回退 PATH 解析。
+    }
+  }
+  return "tar";
+}
+
 export function extractPrebuiltArchive({ archivePath, archiveExt, extractDir, cwd }) {
   mkdirSync(extractDir, { recursive: true });
   if (archiveExt === "zip") {
@@ -56,7 +73,7 @@ export function extractPrebuiltArchive({ archivePath, archiveExt, extractDir, cw
 
   const tarCwd = cwd ?? process.cwd();
   runCommand(
-    "tar",
+    resolveTarCommand(),
     ["-xzf", resolveTarArchiveArg(archivePath, tarCwd), "-C", toTarPosixPath(extractDir)],
     { cwd: tarCwd },
   );
