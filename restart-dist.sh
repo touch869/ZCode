@@ -57,18 +57,24 @@ kill_instance() {
 }
 
 # 备份：mv 失败重试（进程退出 ≠ 句柄立放，Defender/AV 还可能短暂握着）；
-# 重试先 mv 后清上一代备份（避免误删后自身又失败）；至多 15s，失败报错返回 1
+# 重试先 mv 后清上一代备份（避免误删后自身又失败）；
+# 窗口 15s→120s（10-30 两轮连败：大包目录被握柄可超 15s），
+# 前 3 次失败打印 mv 真实错误与 win-unpacked 存活进程，区分句柄/残留/其他死因
 make_backup() {
   [ -d "$APP_DIR" ] || return 0
-  local i
-  for i in $(seq 1 15); do
-    if mv "$APP_DIR" "$BAK_DIR" 2>/dev/null; then
+  local i mv_err
+  for i in $(seq 1 60); do
+    if mv_err=$(mv "$APP_DIR" "$BAK_DIR" 2>&1); then
       return 0
     fi
+    if [ "$i" -le 3 ]; then
+      echo "  mv 失败(第${i}次): $mv_err"
+      powershell -NoProfile -Command "Get-Process | Where-Object { \$_.Path -like '*win-unpacked*' } | Select-Object Id,ProcessName,Path | Format-Table -AutoSize | Out-String -Width 200" 2>/dev/null | head -8
+    fi
     rm -rf "$BAK_DIR"
-    sleep 1
+    sleep 2
   done
-  echo "  ✗ 备份失败（旧包句柄未释放）——本次不部署，旧包原地保留"
+  echo "  ✗ 备份失败（120s 内未释放）——本次不部署，旧包原地保留"
   return 1
 }
 
