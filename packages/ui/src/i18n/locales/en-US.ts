@@ -5880,6 +5880,7 @@ const enUS: Record<string, string> = {
   "chat.message.time.yesterday": "Yesterday {time}",
   "chat.message.retry": "Retry",
   "chat.loading.working": "Working",
+  "chat.loading.tpsSummary": "avg {average} · now {recent} t/s · first {first}",
   "chat.history.workingFor": "Working for {duration}",
   "chat.history.workedFor": "Worked for {duration}",
   "chat.history.worked": "Worked",

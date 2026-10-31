@@ -1502,3 +1502,10 @@ exceptions:
     paths:
       - packages/zcode-cua/src/**
     reason: The whole zcode-cua producer package (broker, native adapters, tools) entered the repo after the gate timestamp as pre-existing code moved from a separate repository; adopting its internal layers needs a dedicated CONTRACT pass (it has known internal cycles by design), not a mechanical split in this branch.
+  - id: chat-loading-tps-indicator-plugin
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/v4/chatLoadingTps.tsx
+      - packages/shared/src/session-debug.ts
+      - apps/zcode-cli/packages/bootstrap/src/zcode-protocol/session-debug.ts
+    reason: 「工作中」状态条的 TPS 插件：新文件把计算/轮询/展示收敛在单文件（chat-loading.tsx 仅加通用 children 插槽，ConversationTurnGroup 仅一行接线）；两处已准入文件各加一个 additive 字段 timeToFirstContentMs（round schema 与记录处），用于区分首字延迟与生成速度；数据仍全部来自既有 sessionDebug 通道，签名与模块边界不变，接管 ui/shared/zcode-cli 目录不在本次范围内。

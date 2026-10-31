@@ -5486,6 +5486,7 @@ const zhCN: Record<string, string> = {
   "chat.message.time.yesterday": "昨天 {time}",
   "chat.message.retry": "重试",
   "chat.loading.working": "工作中",
+  "chat.loading.tpsSummary": "均 {average} · 实时 {recent} t/s · 首字 {first}",
   "chat.history.workingFor": "工作中 {duration}",
   "chat.history.workedFor": "已工作 {duration}",
   "chat.history.worked": "已处理",

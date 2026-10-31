@@ -40,6 +40,7 @@ export function ChatLoading({
   initialElapsedMs = 0,
   className,
   size: _size,
+  children,
   ...props
 }: ChatLoadingProps) {
   const { intl, locale } = useZCodeIntl();
@@ -76,6 +77,8 @@ export function ChatLoading({
           locale,
         )}
       </span>
+      {/* 通用插槽：指标类扩展（如 TPS）经 children 挂载，组件自身对扩展零感知。 */}
+      {children}
     </div>
   );
 }
