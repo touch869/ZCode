@@ -23,6 +23,8 @@ export const sessionDebugRoundSchema = z
     hitRate: count.nullable(),
     generationDurationMs: count.nullable(),
     tokensPerSecond: count.nullable(),
+    // 请求发出→首个内容到达（TTFT）。nullish 兼容尚未升级的旧 CLI 进程缺字段快照。
+    timeToFirstContentMs: count.nullish(),
   })
   .strict();
 export const sessionDebugNetworkEntrySchema = z
