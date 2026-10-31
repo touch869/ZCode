@@ -19,22 +19,35 @@
 //   - 任一插件失败只告警不中断（部署本身已成功，缓存问题不该触发回滚）。
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)));
-const glmPackagesDir = join(
-  repoRoot,
-  "packages",
-  "desktop",
-  "dist",
-  "win-unpacked",
-  "resources",
-  "glm",
-  "packages",
-);
+// glm 树在打包产物里的位置按平台不同：win 免安装版在 win-unpacked/resources 下，
+// mac 是 .app bundle（Contents/Resources）。取存在的那份，两个都没有即产物未打包。
+const glmPackagesCandidates = [
+  join(repoRoot, "packages", "desktop", "dist", "win-unpacked", "resources", "glm", "packages"),
+  join(
+    repoRoot,
+    "packages",
+    "desktop",
+    "dist",
+    "mac-arm64",
+    "ZCode.app",
+    "Contents",
+    "Resources",
+    "glm",
+    "packages",
+  ),
+];
+const glmPackagesDir = glmPackagesCandidates.find((candidate) => existsSync(candidate));
+if (!glmPackagesDir) {
+  console.error("[sync-plugin-cache] 未找到打包产物的 glm 目录——先跑 electron-builder 打包");
+  process.exit(1);
+}
 const cacheMarketplaceDir = join(
-  process.env.USERPROFILE ?? process.cwd(),
+  process.env.USERPROFILE ?? homedir(),
   ".zcode",
   "cli",
   "plugins",
