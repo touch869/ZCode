@@ -28,9 +28,24 @@ const GLM_SERVER = resolve(
   repoRoot,
   "packages/desktop/dist/win-unpacked/resources/glm/packages/node-repl-host/dist/mcp/server.js",
 );
+// 版本目录跟随包内插件版本动态解析（3.17.1 起 node-repl-host 升 0.7.0，硬编码 0.6.1 会永远红）
+const glmPluginManifest = resolve(
+  repoRoot,
+  "packages/desktop/dist/win-unpacked/resources/glm/packages/node-repl-host/package.json",
+);
+let cacheVersionSegment = "";
+try {
+  cacheVersionSegment = JSON.parse(readFileSync(glmPluginManifest, "utf8")).version ?? "";
+} catch {
+  cacheVersionSegment = "";
+}
+if (!cacheVersionSegment) {
+  console.error(`✗ 无法读取包内插件版本: ${glmPluginManifest}`);
+  process.exit(2);
+}
 const CACHE_DIR = resolve(
   process.env.USERPROFILE ?? process.cwd(),
-  ".zcode/cli/plugins/cache/zcode-plugins-official/node-repl-host/0.6.1",
+  `.zcode/cli/plugins/cache/zcode-plugins-official/node-repl-host/${cacheVersionSegment}`,
 );
 const CACHE_SERVER = resolve(CACHE_DIR, "dist/mcp/server.js");
 const CACHE_DRIVER_NODE = resolve(
