@@ -96,6 +96,21 @@ else
   packaged_exe_ok() { [ -f "$STAGE_DIR/$EXE_REL" ]; }
 fi
 
+# ---------------------------------------------------------------------------
+# 构建身份（3.17.2 新增，必须显式钉死，否则本脚本的门禁/拉起全对不上）
+#
+# v3.17.2 起 desktop 的身份与后端环境分成两个轴（packages/desktop/scripts/
+# desktop-product-identity.mjs）：
+#   ZCODE_ENV=production → productName「ZCode」，安装包无后缀
+#   ZCODE_ENV 未设/其它  → productName「ZCode Preview」，安装包带 _TEST 后缀
+# 本脚本的 EXE_REL、taskkill 映像名、launch、verify-cua-deploy 全按「ZCode」写，
+# 所以必须在 pnpm build（tsup 会把 ZCODE_ENV 烘进产物）之前就钉成 production。
+# 2026-11-04 实证：未钉时打包其实成功，但产物是「ZCode Preview.exe」，门禁判
+# 「ZCode.exe 不存在」→ 误回滚，把刚打好的包删掉又报「数据/环境问题」。
+# 需要 Preview 包时显式覆盖：ZCODE_ENV=test ./restart-dist.sh（本脚本不适用）。
+# ---------------------------------------------------------------------------
+export ZCODE_ENV="${ZCODE_ENV:-production}"
+
 step() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 if [ "$PLATFORM" = mac ]; then
@@ -228,7 +243,14 @@ step "pnpm install"
 run_pnpm install || { echo "✗ install 失败：旧实例未受影响"; exit 1; }
 
 step "全量重编（root pnpm build，含 CLI 链 + desktop out/）"
-run_pnpm run build || { echo "✗ 编译失败：旧实例未受影响，改完代码再跑本脚本"; exit 1; }
+# 构建卫生：限制 rolldown 的 Rust 线程池与 pnpm 并发，避免低提交内存机器上原生层
+# 分配失败（v3.17.1 曾报 "memory allocation of N bytes failed"/0xC0000409）。
+# 注意：2026-11-04 已定案 v3.17.2 web 构建段错误的真实诱因是 WSL2/vmmem 活跃
+# （wsl --shutdown 后同命令 43s 通过，10+ 样本 100% 相关），不是内存；这两项保留
+# 作构建卫生，不要再当作 WSL 崩溃的解。
+export RAYON_NUM_THREADS=1
+# flag 必须放在 run 前面（pnpm run build --workspace-concurrency=2 会把 flag 转发进子包脚本必炸）
+run_pnpm -r --workspace-concurrency=1 run build || { echo "✗ 编译失败：旧实例未受影响，改完代码再跑本脚本"; exit 1; }
 if [ ! -f "$DESKTOP/out/main/index.js" ]; then
   echo "✗ 编译门禁不过（out/main/index.js 不存在）：旧实例未受影响"
   exit 1
@@ -295,7 +317,9 @@ else
     exit 1
   }
   if ! packaged_exe_ok; then
-    echo "✗ 打包门禁不过（ZCode.exe 不存在），自动回滚"
+    echo "✗ 打包门禁不过（$APP_DIR/ZCode.exe 不存在），自动回滚"
+    # 打印实际产物名：身份配错（ZCode Preview.exe）与真打包失败必须能一眼区分
+    ls "$APP_DIR"/*.exe 2>/dev/null | sed 's#^.*/##; s#^#     实际产物: #' || true
     rollback
     exit 1
   fi
