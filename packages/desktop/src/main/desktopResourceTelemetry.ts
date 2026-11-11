@@ -4,7 +4,9 @@
  */
 export function configureDesktopResourceTelemetry(..._args: unknown[]): void {}
 export function registerDesktopResourceTelemetry(..._args: unknown[]): void {}
-export function stopDesktopResourceTelemetry(): void {}
+export function stopDesktopResourceTelemetry(_options?: {
+  flushPendingWindows?: boolean;
+}): void {}
 export function resolveResourceUsageScene(): "background" | "foreground" {
   return "foreground";
 }
