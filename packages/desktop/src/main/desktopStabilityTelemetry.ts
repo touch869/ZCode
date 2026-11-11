@@ -15,4 +15,4 @@ export function reportAgentProcessSpawnErrorToArms(..._args: unknown[]): void {}
 export function reportAgentProcessExceptionToArms(..._args: unknown[]): void {}
 export function registerDesktopStabilityMonitors(..._args: unknown[]): void {}
 export function registerStabilityMainWindow(..._args: unknown[]): void {}
-export function scheduleReportPerfAppStartAfterMainViewReady(): void {}
+export function scheduleReportPerfAppStartAfterMainViewReady(..._args: unknown[]): void {}
