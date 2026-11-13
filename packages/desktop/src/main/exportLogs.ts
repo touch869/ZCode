@@ -17,7 +17,6 @@ import { dirname, join, posix } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ZipFile } from "yazl";
-import { CLI_MEMORY_DIAGNOSTIC_DIRECTORY, CLI_MEMORY_FILE_PATTERN } from "@zcode/shared";
 
 import {
   createFeedbackDiagnosticArchive,
@@ -1265,12 +1264,8 @@ export async function createLogArchiveArtifacts(
   );
 
   const zcodeCliDir = getZCodeCliDir();
-  await collectLogArchiveFilesByName(
-    join(zcodeCliDir, CLI_MEMORY_DIAGNOSTIC_DIRECTORY),
-    posix.join(".zcode", "cli", CLI_MEMORY_DIAGNOSTIC_DIRECTORY),
-    (name) => CLI_MEMORY_FILE_PATTERN.test(name),
-    files,
-  );
+  // 本线不采集 3.18.1 的 CLI 分配诊断，导出日志也不收 ~/.zcode/cli/memory-diagnostics：
+  // 该目录含 bundle 函数名/行列号/哈希，导出包可能被用户转发，本线要求诊断数据不出端。
   // 排查 agent CLI 问题还需要它的运行配置与模型 IO 轨迹。
   // config.json 是当前生效配置；rollout 是 model-io 调用轨迹，
   // 二者都不在 ~/.zcode/cli/log 下，需要额外收集才能完整还原现场。
@@ -1442,13 +1437,8 @@ export async function createFeedbackLogArchiveFromExportLogs(
   options: CreateFeedbackLogArchiveFromExportLogsOptions = {},
 ): Promise<{ path: string; size: number }> {
   return createFeedbackDiagnosticArchive({
+    // 本线刻意不把 CLI 分配诊断目录纳入反馈归档（见 createLogArchiveArtifacts 同处说明）。
     sources: [
-      {
-        directory: join(getZCodeCliDir(), CLI_MEMORY_DIAGNOSTIC_DIRECTORY),
-        archivePrefix: ".zcode/cli/memory-diagnostics",
-        contentPolicy: "cli-memory",
-        onlyCurrentDay: false,
-      },
       { directory: join(sourceDir, "logs"), archivePrefix: "logs" },
       { directory: getZCodeCliLogDir(), archivePrefix: ".zcode/cli/log" },
       {
