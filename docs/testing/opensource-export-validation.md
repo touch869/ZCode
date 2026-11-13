@@ -29,6 +29,7 @@
 - README 同时保留已导出的历史版本记录与本次源版本记录。
 - 导出后按实际文件存在性收口工程测试清单和架构例外的精确路径；保留仍存在的替换实现与 glob，不靠敏感词删条目。路径全部移除的例外整项删除。
 - 公共服务只校验响应信封并调用共享请求校验契约；专属配置字段的有效性检查随 `request-security-edition/` 整目录替换，闭源保持原校验结果，开源返回空配置。
+- 本仓库 fork 的 `request-security-aliyun` captcha 插件不参与上述开源导出基线；导出仍按空配置占位生成，插件只在 fork 构建启用。
 - CUA 占位包的执行结果保持 MCP `CallToolResult` 类型，公开 broker 与 helperConstants 入口提供相同的 Helper 参数常量；这些契约只支持公共调用方编译，不启用真实 Computer Use。
 - 正式 E2E 的环境筛选只读取公开的远程目标路径清单。内部队列仍是声明源，由 `node harness/remote/sync-target-specs.mjs` 生成清单并通过工程检查防止漂移。独立的 `check:e2e-remote-targets` 推送前门禁直接核对队列与 JSON，不依赖 Vitest 的模块图选测；缺少私有 harness 目录的开源树跳过该私有一致性校验，有队列时清单缺失或漂移均失败；开源加载配置不依赖内部 harness。
 - 验收包含轨迹入口拒绝已移除参数、临时目录中的开发入口解析、BG24 fixture 校验与桌面 replay，以及最终开源树的完整工程/CUA/CLI 检查。
@@ -61,4 +62,3 @@
 - 在独立开源树冻结安装，执行构建入口、根与 CLI 类型检查、lint、保留的工程/CUA 占位/CLI 测试及覆盖清单审计。
 - 闭源执行架构检查、受影响测试、类型检查和 lint。夹具检查覆盖修改的全部 manifest。
 - 基础许可检查与严格材料检查分别报告；既有材料缺口不计为已修复。
-

@@ -1,3 +1,1 @@
-export function runRequestVerificationParityAssertions(): string[] {
-  return [];
-}
+export { runRequestVerificationParityAssertions } from "@/request-security-aliyun/parity.js";

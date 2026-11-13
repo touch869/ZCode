@@ -1253,13 +1253,38 @@ modules:
   - id: request-security-edition
     roots: [packages/shared/src/request-security-edition]
     managed: true
-    requires: [shared]
+    requires: [shared, request-security-aliyun-policy]
     publicEntrypoints:
       - packages/shared/src/request-security-edition/index.ts
       - packages/shared/src/request-security-edition/policy.ts
       - packages/shared/src/request-security-edition/verification-policy.ts
       - packages/shared/src/request-security-edition/contract.ts
     layers: {adapters: .}
+    owner: request-security
+  # request-security-aliyun-policy：Aliyun captcha 发行策略插件
+  - id: request-security-aliyun-policy
+    roots: [packages/shared/src/request-security-aliyun]
+    managed: true
+    requires: [shared]
+    publicEntrypoints:
+      - packages/shared/src/request-security-aliyun/index.ts
+      - packages/shared/src/request-security-aliyun/contract.ts
+    layers: {domain: .}
+    owner: request-security
+  # request-security-aliyun-ui：Aliyun captcha UI 运行时插件
+  - id: request-security-aliyun-ui
+    roots: [packages/ui/src/request-security-aliyun]
+    managed: true
+    requires: [shared, ui]
+    publicEntrypoints:
+      - packages/ui/src/request-security-aliyun/index.ts
+      - packages/ui/src/request-security-aliyun/contract.ts
+      - packages/ui/src/request-security-aliyun/claim.ts
+      - packages/ui/src/request-security-aliyun/errors.ts
+      - packages/ui/src/request-security-aliyun/messages.ts
+      - packages/ui/src/request-security-aliyun/parity.ts
+    layers: {contract: contract.ts, domain: domain, app: app, adapters: adapters, ui: ui}
+    layerOrder: [contract, domain, app, adapters, ui]
     owner: request-security
 
   # local-ttft-contract：由 architecture:adopt 登记
@@ -2271,6 +2296,14 @@ exceptions:
     paths:
       - packages/ui/src/request-security-edition/errors.ts
     reason: 在现有官方版本安全校验展示入口补充配置读取失败的分类与本地化，不改变状态 owner 或模块边界；公共 errors.ts 入口及其开源占位实现承接同一契约，沿用本条精确路径准入；接管整个 UI 安全校验目录不属于本次网络恢复修复。
+  - id: request-security-aliyun-ui-facades
+    rule: unmanaged-new-file
+    paths:
+      - packages/ui/src/request-security-edition/claim.ts
+      - packages/ui/src/request-security-edition/index.ts
+      - packages/ui/src/request-security-edition/messages.ts
+      - packages/ui/src/request-security-edition/parity.ts
+    reason: 这四条存量官方 UI 安全校验入口改为指向 managed request-security-aliyun-ui 插件的 re-export facade；状态 owner、公共入口和展示语义不变，接管整个 request-security-edition 目录不属于本次插件化改动。
   - id: node-repl-no-progress-hint-unmanaged-edit
     rule: unmanaged-new-file
     paths:
