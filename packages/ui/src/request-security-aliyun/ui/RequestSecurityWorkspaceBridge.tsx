@@ -44,9 +44,10 @@ export function RequestSecurityWorkspaceBridge({
           response,
         });
       } catch (error) {
-        logger.warn("[request-security-aliyun] runtime headers response failed", {
+        logger.lifecycle.warn("[request-security-aliyun] runtime headers response failed", {
+          stage: "respond",
           requestId: request.requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
       }
     };
@@ -66,9 +67,10 @@ export function RequestSecurityWorkspaceBridge({
         if (controller.signal.aborted || !response) return;
         await respond(request, response);
       } catch (error) {
-        logger.warn("[request-security-aliyun] captcha bridge failed", {
+        logger.lifecycle.warn("[request-security-aliyun] captcha bridge failed", {
+          stage: "bridge",
           requestId: request.requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
       } finally {
         pending.delete(request.requestId);

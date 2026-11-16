@@ -15,8 +15,9 @@ export function useRequestVerificationPrewarm(visible: boolean): void {
     const controller = new AbortController();
     void prewarmCaptcha(service, controller.signal).catch((error) => {
       if (!controller.signal.aborted) {
-        logger.warn("[request-security-aliyun] captcha prewarm failed", {
-          error: error instanceof Error ? error.message : String(error),
+        logger.lifecycle.warn("[request-security-aliyun] captcha prewarm failed", {
+          stage: "prewarm",
+          error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
       }
     });

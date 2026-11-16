@@ -5,6 +5,7 @@ import type {
 } from "../contract.js";
 import type { RequestVerificationConfig, RequestVerificationProof } from "@zcode/shared";
 import { resolveCaptchaLanguage } from "../domain/language.js";
+import { logger } from "@/logger.js";
 
 const SDK_URL = "https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js";
 const CAPTCHA_CONTAINER_ID = "zcode-aliyun-captcha-container";
@@ -101,6 +102,23 @@ function isInteractiveCaptchaFailure(error: unknown): boolean {
   );
 }
 
+function describeSdkError(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error);
+  const value = error as {
+    success?: unknown;
+    verifyResult?: unknown;
+    verifyCode?: unknown;
+    verifyMsg?: unknown;
+  };
+  // SDK 的 verifyCode/verifyResult 是定位 F001/F015/校验拒绝的关键，但不含用户输入或 proof。
+  return JSON.stringify({
+    success: value.success,
+    verifyResult: value.verifyResult,
+    verifyCode: value.verifyCode,
+    verifyMsg: value.verifyMsg,
+  });
+}
+
 function handleSdkFail(error: unknown): void {
   const attempt = activeAttempt;
   if (!attempt) return;
@@ -109,6 +127,11 @@ function handleSdkFail(error: unknown): void {
   if (attempt.allowInteractive && isInteractiveCaptchaFailure(error)) {
     return;
   }
+  logger.lifecycle.warn("[request-security-aliyun] captcha sdk rejected", {
+    stage: "sdk",
+    allowInteractive: attempt.allowInteractive,
+    detail: describeSdkError(error),
+  });
   activeAttempt = null;
   attempt.reject(error instanceof Error ? error : new Error("Captcha verification failed."));
 }
@@ -218,6 +241,10 @@ async function initController(
         onError: (error) => {
           const attempt = activeAttempt;
           activeAttempt = null;
+          logger.lifecycle.warn("[request-security-aliyun] captcha sdk error", {
+            stage: "sdk",
+            detail: describeSdkError(error),
+          });
           attempt?.reject(
             error instanceof Error ? error : new Error("Captcha verification failed."),
           );
