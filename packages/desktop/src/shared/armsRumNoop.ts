@@ -12,7 +12,9 @@
  * 不会静默降级。
  */
 interface ArmsReporterLike {
-  request: (options: unknown) => Promise<unknown>;
+  // 官方在 useReporter 里把 request 包装成 (context, bundle) 两参；这里只承载形状，
+  // 用 never[] 让任意具体签名都能赋值，且替身自身永不调用。
+  request: (...args: never[]) => Promise<unknown>;
   [key: string]: unknown;
 }
 
