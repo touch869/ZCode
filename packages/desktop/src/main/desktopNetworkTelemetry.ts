@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- 网络指标采集/聚合/ARMS 上报 */
-import armsRum from "@arms/rum-electron";
+import armsRum from "../shared/armsRumNoop.js";
 import { mapZCodeEnvToArmsRumEnv } from "@zcode/shared";
 import type { NetworkObservation } from "@zcode/rpc";
 import {

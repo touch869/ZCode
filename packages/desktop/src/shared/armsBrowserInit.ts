@@ -1,4 +1,4 @@
-import armsRum from "@arms/rum-electron/browser";
+import armsRum from "./armsRumNoop.js";
 import type { ZCodeRuntimeEnv } from "@zcode/shared";
 import { buildArmsBrowserInitConfig } from "./armsRumShared.js";
 

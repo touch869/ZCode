@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- 稳定性上报集中单模块，拆分反而增加跨文件状态同步 */
 import { randomUUID } from "node:crypto";
-import armsRum from "@arms/rum-electron";
+import armsRum from "../shared/armsRumNoop.js";
 import { BrowserWindow, type WebContents } from "electron";
 import {
   mapZCodeEnvToArmsRumEnv,

@@ -1,7 +1,7 @@
 import { wrapStartupReporterRequest } from "./startupTelemetryDelivery.js";
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import armsRum from "@arms/rum-electron";
+import armsRum from "../shared/armsRumNoop.js";
 import { ZCODE_AGENT_LIFECYCLE_LOG_MARKER } from "@zcode/shared/process-diagnostic";
 import {
   ZCODE_ARMS_RUM_ENDPOINT,
