@@ -2141,8 +2141,9 @@ exceptions:
     reason: relay-official 线的 @trycua 开源驱动运行时面（cua-driver-runtime 由 node-repl-host 进程内加载）；该包其余 broker/pip-session 契约文件与上游保持一致，仅驱动面为本线新增，不因此接管整个 zcode-cua 包。
   - id: relay-official-telemetry-stub-seam
     rule: unmanaged-new-file
-    paths: [packages/desktop/src/shared/armsRumNoop.ts]
-    reason: relay-official 线的 ARMS 遥测剥离接缝：4.0.0 起不再整族改写官方遥测文件，只在 shared 下放一个 no-op 替身（@arms/rum-electron 与 /browser 的本地替身），官方遥测实现原样保留、SDK 永不加载。属刻意的遥测移除接缝，不引入新边界；接管整个 desktop 目录不在本次范围内。
+    paths:
+      [packages/desktop/src/shared/armsRumNoop.ts, packages/desktop/src/main/databaseStartupTelemetry.ts, packages/desktop/src/main/desktopMcpTelemetry.ts, packages/desktop/src/main/desktopZCodeDataSizeTelemetry.ts]
+    reason: relay-official 线的 ARMS 遥测剥离接缝：4.0.0 起不再整族改写官方遥测文件，只在 shared 下放一个 no-op 替身（@arms/rum-electron 与 /browser 的本地替身），官方遥测实现原样保留、SDK 永不加载。三个官方文件仅把 SDK import 换成该替身（upstream-snapshot 把它们列入 introduced，故一并登记）；属刻意的遥测移除接缝，不引入新边界。
   - id: side-pane-full-view-shortcut-command-edit
     rule: unmanaged-new-file
     paths: [packages/shared/src/shortcutCommands.ts]
