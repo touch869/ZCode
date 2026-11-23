@@ -251,32 +251,53 @@ export function MarketingTouchProvider({
           return { status: "cancelled" };
         }
         let submitted = false;
+        const planId = action.args.plan_id;
         try {
           const proof = await prepareRequestVerificationClaim(
             services.codingPlanSubscriptionService,
             signal,
             () => phase("verifying"),
           );
-          if (!proof)
+          if (!proof) {
+            // 领取路径的失败文案只有本地化兜底；记录阶段与 planId，配合 aliyun 模块的日志定位根因。
+            logger.lifecycle.warn("[marketing-touch] claim verification produced no proof", {
+              stage: "captcha",
+              planId,
+            });
             return {
               status: "cancelled",
               message: intl.formatMessage({ id: requestVerificationClaimFailureMessageId }),
             };
+          }
           phase("submitting");
           submitted = true;
           const result = await services.codingPlanSubscriptionService.claimManualPlan({
-            planId: action.args.plan_id,
+            planId,
             ...proof,
           });
           signal.throwIfAborted();
-          if (!result.success)
+          if (!result.success) {
+            const terminal = [1001, 1002, 1003, 1004, 1005].includes(result.code);
+            logger.lifecycle.warn("[marketing-touch] claim rejected", {
+              stage: "claim",
+              planId,
+              code: result.code,
+              terminal,
+              message: result.message?.trim() ?? "",
+            });
             return {
               status: "failure",
-              terminal: [1001, 1002, 1003, 1004, 1005].includes(result.code),
+              terminal,
               message: result.message?.trim()
                 ? result.message
                 : intl.formatMessage({ id: "manualClaimPlan.claim.failure.generic" }),
             };
+          }
+          logger.lifecycle.info("[marketing-touch] claim succeeded", {
+            stage: "claim",
+            planId,
+            code: result.code,
+          });
           // 成功已由 claim 确定，后置刷新失败只影响本地权益投影，不能逆转领取结果。
           void Promise.allSettled([
             refreshStartEntitlementRef.current({ force: true, silent: true, reason: "purchase" }),
@@ -288,8 +309,20 @@ export function MarketingTouchProvider({
           });
           // 领取结果由 Controller 的结果弹窗承载，避免成功 toast 与弹窗重复提示。
           return { status: "success" };
-        } catch {
+        } catch (error) {
           if (signal.aborted) return { status: "cancelled" };
+          // 区分“提交前失败”和“已提交但结果未知”，并保留 ApiError 的 HTTP 状态码。
+          const status =
+            typeof error === "object" && error !== null && "status" in error
+              ? (error as { status?: unknown }).status
+              : undefined;
+          logger.lifecycle.warn("[marketing-touch] claim request failed", {
+            stage: submitted ? "claim" : "captcha",
+            planId,
+            submitted,
+            httpStatus: typeof status === "number" ? status : undefined,
+            error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+          });
           return {
             status: submitted ? "uncertain" : "failure",
             message: intl.formatMessage({
