@@ -1,5 +1,6 @@
 {
   "name": "@zcode/desktop",
+  "version": "4.0.0",
   "private": true,
   "description": "ZCode Desktop App",
   "author": "ZCode",
@@ -109,6 +110,7 @@
     "@electron/rebuild": "^4.0.3",
     "@puppeteer/browsers": "2.13.0",
     "@tailwindcss/vite": "^4.2.2",
+    "sharp": "^0.34.3",
     "@types/mocha": "^10.0.10",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
