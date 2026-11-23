@@ -36,6 +36,7 @@ App 业务单测已退役，不新增或恢复 App 业务单测 test/spec 或 `c
 - `apps/zcode-cli`：Agent CLI 与运行时。
 - `CONTEXT.md`：插件商店领域词汇；修改相关 UI 前阅读。
 - `DESIGN.md`：UI 设计规范；修改 UI 前阅读。
+- `docs/runbooks/zcode-desktop-upgrade.md`：本机出桌面包并替换正在跑的应用（`restart-dist.sh`）；改脚本或升级前阅读，含 `ZCODE_ENV` 身份、杀软排除与故障对照。
 
 ## 实现与验证
 
@@ -84,3 +85,32 @@ App 业务单测已退役，不新增或恢复 App 业务单测 test/spec 或 `c
 - `info` 用于进程和会话生命周期、权限结果、一次性初始化等生产可用事件。
 - `warn` 用于可恢复异常；`error` 用于崩溃、握手失败、鉴权丢失等不可恢复错误。
 - 不在日志、示例或提交中写入凭据、真实用户数据和内部服务地址。
+
+## 官方跟版升级
+
+官方新版来自 `upstream`（zai-org/ZCode，只 fetch 不推），我方线是 `main`。一次跟版产出**两份包**：正式安装包（次日由用户安装到 `%LOCALAPPDATA%\Programs\ZCode`）+ 预览免安装包（先验后用）。流程不跑测试、不动正在使用的安装包、不 push。细则见 [升级 runbook](docs/runbooks/zcode-desktop-upgrade.md)。
+
+**判定是否发版**：`git fetch upstream --tags --prune`，取 `base=$(git merge-base main upstream/main)`、`up=$(git rev-parse upstream/main)`，用 **merge-base + `package.json` version 双信号**判断（官方不总打 tag，tag 仅作辅助）。`up == base` → 无更新结束；版本升（或出现更高 tag）→ 迁移，新基线 = `upstream/main` 提交；有提交但版本未升 → 逐条列出 `base..upstream/main` 并标注"未发版未迁移"，结束。
+
+**迁移：直接改 main，不用 worktree**（运行的是安装版，仓库 `dist` 不再是在跑包）：
+
+1. `git branch backup-main-pre<ver>` 保存当前 main；
+2. `git reset --hard <upstream/main 提交>`；
+3. 依覆盖分析逐个 `cherry-pick` 我方 commit——用户明令剔除的"会话切换保温窗口"commit 一律 drop，拿不准一律 keep；
+4. 补 `packages/desktop/package.json` 的 `version`（electron-builder 26.17 要求显式版本）；
+5. 任一步失败：`git cherry-pick --abort` + `git reset --hard backup-main-pre<ver>`，报告里写明 main 已还原到哪个 sha。
+
+冲突原则：官方侧为准，我方逻辑收回独立文件，官方文件内的我方 diff 保持最小。每批 pick 后做单文件语法自检——官方 typecheck 有基线错误，不作门禁。
+
+**两份产物**（两次构建都必须在 `pnpm build` 之前 `ZCODE_ENV=production`；未设置会产出 `ZCode Preview.exe` + `_TEST` 安装包，门禁与安装路径全部错位）：
+
+| 产物 | 命令要点 | 输出 |
+| --- | --- | --- |
+| 正式安装包 | `pnpm exec electron-builder --config electron-builder.config.js --publish never` | `dist/ZCode-<ver>-win-x64.exe` |
+| 预览免安装包 | 追加 `ZCODE_PREVIEW_IDENTITY=1 ZCODE_DESKTOP_DIST_DIR=dist-preview` 与 `--dir` | `dist-preview/win-unpacked/ZCode Preview.exe` |
+
+预览身份（`appId=dev.zcode.app.preview`、userData `%APPDATA%\ZCode Preview`）是官方机制，能让两个包同时运行；它**只换身份不换后端**（后端仍看 `ZCODE_ENV`），且在编译期折叠，运行时改不了。官方**未**提供预览包的数据隔离：预览包必须整根隔离数据——启动时以 `ZCODE_DATA_BASE_DIR=<预览专用父目录>`（数据根为其下 `.zcode`），否则两包抢同一份 `tasks-index.sqlite`；双击启动拿不到环境变量，所以要让 desktop 启动早期按身份设默认数据根（预览包自己的 `setting.json` 也从该根引导，避免回落到真实 `~/.zcode`）。图标不作区分（按用户裁定）。
+
+**CUA 插件**：安装版运行时不读包内 `glm`，读 `~/.zcode/cli/plugins/cache/zcode-plugins-official/<name>/<version>/`，跨版本共用。打包期 `afterPack:assertPackagedCuaSharp|CuaKoffi|CuaHelper|NodePtyPrebuild` 是硬门禁，`electron-builder` 非 0 退出即失败，不得吞；打包后要跑 `sync-plugin-cache.mjs`（当前硬编码源 `dist/win-unpacked` 与目标 `%USERPROFILE%\.zcode`，出双产物前需支持 `--dist-dir` / `--data-base-dir`），否则 seed 静默降级会让缓存停在旧 bundle，表现为 CUA 全盲。
+
+**红线**：不 push、不动正在使用的安装包、不跑测试套件、不杀非本任务进程。
