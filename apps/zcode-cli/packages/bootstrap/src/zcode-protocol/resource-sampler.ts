@@ -1,5 +1,4 @@
 import type { Logger } from "@zcode/contracts";
-import { startCliMemoryDiagnostics } from "@zcode/adapters/memory-diagnostics";
 import {
   createMemorySampleWriteGate,
   memoryUsageToSampleFields,
@@ -60,21 +59,10 @@ export function startProtocolResourceSampler(
       },
     });
     sampler.start();
-    let diagnostics: { stop(): void } | undefined;
-    try {
-      diagnostics = startCliMemoryDiagnostics(() =>
-        server.collectMemoryDiagnostics({ includeEventStats: false }),
-      );
-    } catch {
-      // inspector 不可用时不能影响协议握手和既有资源采样。
-    }
-    return {
-      start: () => sampler.start(),
-      stop: () => {
-        diagnostics?.stop();
-        sampler.stop();
-      },
-    };
+    // 本线刻意不启动 3.18.1 的 CLI 分配诊断（startCliMemoryDiagnostics）。
+    // 该模块把 bundle 函数名、行列号和 bundle 哈希写进 ~/.zcode/cli/memory-diagnostics，
+    // 会随问题反馈的「上传诊断日志」离开本机；本线要求诊断数据不出端，故不采集、不落盘。
+    return sampler;
   } catch {
     // 资源遥测是 best effort，初始化失败不能改变 Agent 启动结果。
     return undefined;

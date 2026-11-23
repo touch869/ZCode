@@ -9,10 +9,6 @@ import {
   redactFeedbackText,
   ZCODE_VERSION,
   ZCODE_COMMIT,
-  CLI_MEMORY_FILE_PATTERN,
-  CLI_MEMORY_MAX_FILE_BYTES,
-  CLI_MEMORY_MAX_FILES,
-  sanitizeCliMemoryDiagnostic,
 } from "@zcode/shared";
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -27,7 +23,7 @@ export interface FeedbackLogSource {
   /** 默认只收集本地当天修改的文件；配置文件可关闭该限制。 */
   onlyCurrentDay?: boolean;
   /** 配置文件使用结构化安全投影，避免把插件自定义敏感项上传。 */
-  contentPolicy?: "diagnostic" | "cli-config" | "cli-memory";
+  contentPolicy?: "diagnostic" | "cli-config";
 }
 
 function diagnosticEncoding(buffer: Buffer): "utf-8" | "utf-16le" | "utf-16be" {
@@ -206,15 +202,6 @@ function sanitizeCliConfig(text: string): string | null {
   return redactFeedbackText(JSON.stringify(projection, null, 2), { diagnostic: true });
 }
 
-function sanitizeCliMemory(text: string): string | null {
-  try {
-    const record = sanitizeCliMemoryDiagnostic(JSON.parse(text));
-    return record ? JSON.stringify(record) + "\n" : null;
-  } catch {
-    return null;
-  }
-}
-
 function sanitizeDiagnosticLog(text: string): string {
   // stderr 整体属于敏感正文，不能放宽通用脱敏。只从已有的异常退出记录投影有界错误证据。
   const projected = text
@@ -334,16 +321,14 @@ export async function createFeedbackDiagnosticArchive(options: {
       .filter((source) => source !== undefined)
       .sort(
         (a, b) =>
-          Number(b.contentPolicy === "cli-memory") - Number(a.contentPolicy === "cli-memory") ||
           Number(Boolean(b.includeFileNames || b.exitLogsOnly)) -
-            Number(Boolean(a.includeFileNames || a.exitLogsOnly)),
+          Number(Boolean(a.includeFileNames || a.exitLogsOnly)),
       );
     for (const [sourceIndex, source] of sources.entries()) {
       const { root } = source;
       const remainingSources = sources.length - sourceIndex;
       const sourceByteLimit = totalBytes + Math.floor((budget - totalBytes) / remainingSources);
       const sourceVisitLimit = visited + Math.floor((2000 - visited) / remainingSources);
-      let memoryFiles = 0;
       const walk = async (directory: string, prefix: string, depth: number): Promise<void> => {
         if (depth > 4 || visited >= sourceVisitLimit) return;
         const names = await readdir(directory, { withFileTypes: true }).catch(() => []);
@@ -357,8 +342,7 @@ export async function createFeedbackDiagnosticArchive(options: {
           if (
             entry.isDirectory() &&
             !source.exitLogsOnly &&
-            !isExplicitFileSource &&
-            source.contentPolicy !== "cli-memory"
+            !isExplicitFileSource
           ) {
             await walk(absolutePath, name, depth + 1);
             continue;
@@ -370,11 +354,6 @@ export async function createFeedbackDiagnosticArchive(options: {
               : !(source.exitLogsOnly
                   ? entry.name.endsWith(".exit.log")
                   : /(?:\.log(?:\.\d+)?|\.jsonl|\.ndjson)$/i.test(entry.name)))
-          )
-            continue;
-          if (
-            source.contentPolicy === "cli-memory" &&
-            (!CLI_MEMORY_FILE_PATTERN.test(entry.name) || memoryFiles >= CLI_MEMORY_MAX_FILES)
           )
             continue;
           if ((await realpath(absolutePath).catch(() => null)) !== absolutePath) {
@@ -414,13 +393,11 @@ export async function createFeedbackDiagnosticArchive(options: {
               skipLogFile("opened-file-policy");
               continue;
             }
-            const fileLimit =
-              source.contentPolicy === "cli-memory" ? CLI_MEMORY_MAX_FILE_BYTES : MAX_FILE_BYTES;
+            const fileLimit = MAX_FILE_BYTES;
             const limit = Math.min(fileLimit, sourceByteLimit - totalBytes);
             if (
               limit <= 0 ||
-              ((source.contentPolicy === "cli-config" || source.contentPolicy === "cli-memory") &&
-                opened.size > limit)
+              (source.contentPolicy === "cli-config" && opened.size > limit)
             ) {
               skipLogFile(
                 limit >= fileLimit
@@ -465,24 +442,16 @@ export async function createFeedbackDiagnosticArchive(options: {
               continue;
             }
             const sanitizedText =
-              source.contentPolicy === "cli-memory"
-                ? sanitizeCliMemory(text)
-                : source.contentPolicy === "cli-config"
-                  ? sanitizeCliConfig(text)
-                  : sanitizeDiagnosticLog(text);
+              source.contentPolicy === "cli-config"
+                ? sanitizeCliConfig(text)
+                : sanitizeDiagnosticLog(text);
             if (sanitizedText === null) {
-              skipLogFile(
-                source.contentPolicy === "cli-memory"
-                  ? "invalid-memory-diagnostic"
-                  : "invalid-config",
-              );
+              skipLogFile("invalid-config");
               continue;
             }
             let data = Buffer.from(sanitizedText);
             const outputTruncated =
-              data.length > limit &&
-              source.contentPolicy !== "cli-config" &&
-              source.contentPolicy !== "cli-memory";
+              data.length > limit && source.contentPolicy !== "cli-config";
             if (outputTruncated) {
               // 脱敏标记可能比原值更长；已脱敏内容仍按完整行保留末尾，不能再因膨胀丢掉整个日志。
               const boundary = data.indexOf(10, data.length - limit - 1);
@@ -492,7 +461,6 @@ export async function createFeedbackDiagnosticArchive(options: {
               skipLogFile("redacted-size-limit");
               continue;
             }
-            if (source.contentPolicy === "cli-memory") memoryFiles += 1;
             entries.push({ name, data });
             if (offset > 0 || outputTruncated) truncatedLogFiles += 1;
             totalBytes += Math.max(length, data.length);
@@ -521,7 +489,7 @@ export async function createFeedbackDiagnosticArchive(options: {
           `truncatedLogFiles: ${truncatedLogFiles}`,
           `skippedLogFiles: ${Object.values(skippedLogFilesByReason).reduce((sum, count) => sum + count, 0)}`,
           `skippedLogFilesByReason: ${JSON.stringify(skippedLogFilesByReason)}`,
-          "Scope: diagnostic text logs modified today (oversized logs retain complete tail records), bounded CLI memory evidence and a non-sensitive CLI config projection; credentials and payloads redacted.",
+          "Scope: diagnostic text logs modified today (oversized logs retain complete tail records) and a non-sensitive CLI config projection; credentials and payloads redacted.",
         ].join("\n"),
       ),
       "about.txt",
