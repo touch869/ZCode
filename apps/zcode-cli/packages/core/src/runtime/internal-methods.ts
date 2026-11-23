@@ -12,6 +12,7 @@ import type {
   ProjectId,
   SessionEvent,
   SessionEventSink,
+  SessionTitleSource,
   SkillLoadOutcome,
   SubagentPort,
   TodoItem,
@@ -38,6 +39,7 @@ import type {
 import type { BackgroundResultOriginMeta, ContextUsageBreakdownItem } from "@zcode/contracts";
 import type { TurnRequestState } from "./methods/turn-loop-state.js";
 import type { McpSessionView } from "../mcp/runtime/session.js";
+import type { ParentTaskNotificationEnqueueResult } from "../subagent/runner.js";
 import type { RuntimeCommand, RuntimeCommandId } from "./command-queue.js";
 import type { RuntimeMessageEntry } from "../agent/message-history.js";
 import type {
@@ -99,7 +101,12 @@ export interface AgentRuntimeCoreMethods {
     input: string,
     options?: { goalSummaryTargetID?: string; traceContext?: TraceContext },
   ): void;
-  setCustomSessionTitle(input: { title: string; traceContext: TraceContext }): Promise<void>;
+  setCustomSessionTitle(input: {
+    title: string;
+    traceContext: TraceContext;
+    /** 乐观锁：仅覆盖期望来源的标题（custom 不在内）；不传 = 用户重命名的无条件覆盖。 */
+    expectedTitleSources?: readonly SessionTitleSource[];
+  }): Promise<void>;
   recordUserInputAutoResolutionUpdate(
     input: UserInputAutoResolutionUpdatedPayload & { traceContext?: TraceContext },
   ): Promise<void>;
@@ -177,7 +184,7 @@ export interface AgentRuntimeCoreMethods {
     text: string;
     toolName?: string;
     traceContext: TraceContext;
-  }): void;
+  }): ParentTaskNotificationEnqueueResult;
   enqueueSubagentMessage(input: EnqueueSubagentMessageInput): undefined;
   drainPendingRuntimeCommandsForActiveLoop(): Promise<{
     backgroundSubagentResultConsumed: boolean;

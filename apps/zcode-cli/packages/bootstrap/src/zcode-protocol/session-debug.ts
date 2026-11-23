@@ -143,6 +143,7 @@ export function observeSessionDebug(record: SessionRecord, event: SessionEvent):
           : null,
       generationDurationMs,
       tokensPerSecond: calculateOutputTps(outputTokens, generationDurationMs),
+      timeToFirstContentMs: first ?? null,
     },
   ].slice(-SESSION_DEBUG_LIMITS.rounds);
 }
