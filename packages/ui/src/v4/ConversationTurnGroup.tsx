@@ -72,6 +72,7 @@ import {
 } from "@/lib/assistantCodeComment.js";
 import { useAssistantPreviewCardsForAssistantTextRow } from "@/v4/useAssistantPreviewCardsForRow.js";
 import { shouldShowTurnChatLoading } from "@/v4/chatLoadingVisibility.js";
+import { ChatLoadingTps } from "@/v4/chatLoadingTps.js";
 import {
   buildAssistantWorkRenderItems,
   groupConsecutiveAssistantSummaries,
@@ -207,10 +208,12 @@ function toRetryStatus(apiRetry: ApiRetryState): ZCodeApiRetryStatus {
 
 function TurnChatLoadingSlot({
   apiRetry,
+  context,
   eligible,
   initialElapsedMs,
 }: {
   apiRetry: ApiRetryState | null;
+  context: ConversationRowRenderContext;
   eligible: boolean;
   initialElapsedMs: number;
 }) {
@@ -234,7 +237,9 @@ function TurnChatLoadingSlot({
       ) : (
         // running 是 ChatLoading 的权威事实；额外静默计时会让 projection
         // 更新反复重启可见性，并使 UI 晚于真实状态。
-        <ChatLoading loading data-testid={TID_CHAT_LOADING} initialElapsedMs={initialElapsedMs} />
+        <ChatLoading loading data-testid={TID_CHAT_LOADING} initialElapsedMs={initialElapsedMs}>
+          <ChatLoadingTps context={context} />
+        </ChatLoading>
       )}
     </div>
   );
@@ -889,6 +894,7 @@ function ConversationTurnFlow({
         />
         <TurnChatLoadingSlot
           apiRetry={apiRetry}
+          context={context}
           eligible={showLoading}
           initialElapsedMs={unit.workStatus?.durationMs ?? 0}
         />
@@ -969,6 +975,7 @@ function ConversationTurnFlow({
       ))}
       <TurnChatLoadingSlot
         apiRetry={apiRetry}
+        context={context}
         eligible={showLoading}
         initialElapsedMs={unit.workStatus?.durationMs ?? 0}
       />
@@ -1208,6 +1215,7 @@ function ConversationBackgroundResultWork({
       ) : null}
       <TurnChatLoadingSlot
         apiRetry={apiRetry}
+        context={context}
         eligible={showLoading}
         initialElapsedMs={unit.workStatus?.durationMs ?? 0}
       />
