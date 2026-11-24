@@ -2142,8 +2142,8 @@ exceptions:
   - id: relay-official-telemetry-stub-seam
     rule: unmanaged-new-file
     paths:
-      [packages/desktop/src/shared/armsRumNoop.ts, packages/desktop/src/main/databaseStartupTelemetry.ts, packages/desktop/src/main/desktopMcpTelemetry.ts, packages/desktop/src/main/desktopZCodeDataSizeTelemetry.ts]
-    reason: relay-official 线的 ARMS 遥测剥离接缝：4.0.0 起不再整族改写官方遥测文件，只在 shared 下放一个 no-op 替身（@arms/rum-electron 与 /browser 的本地替身），官方遥测实现原样保留、SDK 永不加载。三个官方文件仅把 SDK import 换成该替身（upstream-snapshot 把它们列入 introduced，故一并登记）；属刻意的遥测移除接缝，不引入新边界。
+      [packages/desktop/src/shared/armsRumNoop.ts, packages/desktop/src/main/rendererActionTraceLocalRollout.ts, packages/desktop/src/main/databaseStartupTelemetry.ts, packages/desktop/src/main/desktopMcpTelemetry.ts, packages/desktop/src/main/desktopZCodeDataSizeTelemetry.ts]
+    reason: relay-official 线的遥测剥离接缝：4.0.0 起不再整族改写官方遥测文件，只在 shared 下放一个 no-op 替身（@arms/rum-electron 与 /browser 的本地替身），官方遥测实现原样保留、SDK 永不加载；rendererActionTraceLocalRollout 把 renderer-action-trace 远端灰度换成静态 disabled 快照（exporter 无端点时避免每小时 client-configs 请求与必然丢弃的 span），复用官方 RendererActionTraceRollout 接口、不新增边界。三个官方文件仅把 SDK import 换成该替身（upstream-snapshot 把它们列入 introduced，故一并登记）；属刻意的遥测移除接缝。
   - id: side-pane-full-view-shortcut-command-edit
     rule: unmanaged-new-file
     paths: [packages/shared/src/shortcutCommands.ts]
